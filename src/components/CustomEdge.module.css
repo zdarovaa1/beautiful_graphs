@@ -1,0 +1,26 @@
+.flow {
+  fill: none;
+  stroke-width: 2;
+  stroke-dasharray: 6 10;
+  opacity: 0.7;
+  animation: dashmove 0.9s linear infinite;
+}
+@keyframes dashmove {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+.label {
+  position: absolute;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid;
+  color: #334155;
+  padding: 2px 8px;
+  z-index: 10;
+  border-radius: 8px;
+  pointer-events: all;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}

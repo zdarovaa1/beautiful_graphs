@@ -1,0 +1,119 @@
+.settings {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 17px;
+  font-weight: 700;
+  padding: 16px 18px 12px;
+  color: #0f172a;
+}
+.grip {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
+  color: #cbd5e1;
+  pointer-events: none;
+}
+
+.toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 18px 14px;
+  border-bottom: 1px solid #eef2f8;
+}
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+}
+.switch {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 38px;
+  height: 20px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  position: relative;
+  transition: background 0.18s;
+}
+.switchOn {
+  background: #22c55e;
+}
+.knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.18s;
+}
+.switchOn .knob {
+  transform: translateX(18px);
+}
+
+.section {
+  border-bottom: 1px solid #eef2f8;
+}
+.sectionHead {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+}
+.sectionBody {
+  padding: 0 18px 14px;
+}
+
+.footer {
+  margin-top: auto;
+  display: flex;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid #eef2f8;
+  background: #f8fafc;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d6e0ee;
+  background: #fff;
+  color: #475569;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.btn:hover {
+  background: #f1f5fb;
+}
+.btnPrimary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+.btnPrimary:hover {
+  background: #2f72e0;
+}
