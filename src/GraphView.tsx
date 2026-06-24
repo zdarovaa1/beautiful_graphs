@@ -206,7 +206,7 @@ const FlowCanvas = memo(function FlowCanvas({
 function GraphInner() {
   const [positions, setPositions] = useState<Map<string, LaidOutNode> | null>(null);
   const [selected, setSelected] = useState<SelectedEntity | null>(null);
-  const [showDetailPanel, setShowDetailPanel] = useState(true);
+  const [showDetailPanel, setShowDetailPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('hand');
