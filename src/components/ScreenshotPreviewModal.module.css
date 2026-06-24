@@ -1,0 +1,163 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.45);
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 100%);
+  height: min(90vh, 820px);
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #d6e0ee;
+  box-shadow: 0 24px 48px rgba(30, 58, 95, 0.22);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e8eef6;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.closeBtn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: #64748b;
+  cursor: pointer;
+}
+.closeBtn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.previewWrap {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: #d8ebff;
+  border-top: 1px solid #e8eef6;
+  border-bottom: 1px solid #e8eef6;
+}
+
+.previewWrapTransparent {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+    linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+    linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+}
+
+.previewWrapTransparent :global(.react-flow__pane),
+.previewWrapTransparent :global(.react-flow__viewport) {
+  background: transparent !important;
+}
+
+/* xyflow #2118: рёбра не обрезать внутри SVG; рамку .previewWrap клипаем сами */
+.previewWrap :global(.react-flow .react-flow__edges svg) {
+  overflow: visible !important;
+}
+
+
+.flow {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 18px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #d6e0ee;
+  background: #fff;
+  color: #3b6fd4;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btn:hover:not(:disabled) {
+  background: #eef4ff;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.btnPrimary {
+  composes: btn;
+  background: #3b6fd4;
+  border-color: #3b6fd4;
+  color: #fff;
+}
+.btnPrimary:hover:not(:disabled) {
+  background: #2f5eb8;
+}
+
+.hint {
+  margin-right: auto;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.bgToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bgToggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: #3b6fd4;
+  cursor: pointer;
+}

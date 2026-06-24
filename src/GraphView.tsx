@@ -1,290 +1,309 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, memo, useCallback, useEffect, useMemo, useRef, startTransition, useState } from 'react';
 import {
   Background,
   BackgroundVariant,
   ReactFlow,
   ReactFlowProvider,
+  SelectionMode,
   useNodesState,
+  useStore,
   type Edge,
   type Node,
   type NodeMouseHandler,
   type EdgeMouseHandler,
 } from '@xyflow/react';
+import { shallow } from 'zustand/shallow';
 import '@xyflow/react/dist/style.css';
 
+// ── источник данных ───────────────────────────────────────────────────────
+// Вариант 1 (по умолчанию): оригинальные данные
 import { edges as edgeDefs, islands as islandDefs, nodes as nodeDefs } from './data/graphData';
+const PRESET_POSITIONS: PosMap = {};
+
+// Вариант 2: сгенерированные моки (сначала запусти: node scripts/generateMocks.mjs)
+// import { mockNodes as nodeDefs, mockEdges as edgeDefs, mockIslands as islandDefs, mockPositions } from './data/generatedMockData';
+// const PRESET_POSITIONS: PosMap = mockPositions;
+
 import { runElkLayout, type LaidOutNode } from './layout/elkLayout';
-import { getNodeSize } from './theme';
 import styles from './GraphView.module.css';
+import { useReportLayout, useToolbarPosition } from './SnapLayout';
 import { CustomNode } from './components/CustomNode';
 import { CustomEdge } from './components/CustomEdge';
 import { IslandNode } from './components/IslandNode';
 import { DetailPanel } from './components/DetailPanel';
 import { Toolbar } from './components/Toolbar';
 import { SettingsPanel } from './components/SettingsPanel';
-import type {
-  DisplaySettings,
-  EdgeType,
-  IslandType,
-  ObjectType,
-  SelectedEntity,
-} from './types';
+import { SelectionToolbar } from './components/SelectionToolbar';
+import type { DisplaySettings, SelectedEntity } from './types';
+import {
+  buildInitialSettings,
+  isFiltersChanged,
+  computeVisibleNodeIds,
+  computeIslandNodes,
+  computeGraphNodes,
+  computeEdges,
+  applyAlignment,
+  applyElkLayoutToSelection,
+  type PosMap,
+} from './utils/graphHelpers';
 
-const nodeTypes = { graph: CustomNode, island: IslandNode };
-const edgeTypes = { custom: CustomEdge };
+const RF_NODE_TYPES = { graph: CustomNode, island: IslandNode };
+const RF_EDGE_TYPES = { custom: CustomEdge };
 
-const ISLAND_PAD = 26;
-const ISLAND_HEADER = 30;
+/**
+ * Уровни детализации нод в зависимости от зума:
+ *   0 — zoom < 0.2 → крошечный цветной прямоугольник
+ *   1 — zoom < 0.5 → только заголовок
+ *   2 — zoom ≥ 0.5 → полная детализация
+ * Контекст обновляется только при пересечении порогов — не на каждый тик.
+ */
+export const ZoomTierContext = createContext<0 | 1 | 2>(2);
 
-// слои по оси Z: острова < выбранный остров < связи < узлы,
-// чтобы стрелки и внутренние элементы всегда были выше островов
-const Z_ISLAND = 0;
-const Z_ISLAND_SELECTED = 4;
-const Z_EDGE = 5;
-const Z_NODE = 6;
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 2.5;
+const BG_GAP = 22;
+const BG_DOT_SIZE = 1.4;
+const BG_DOT_COLOR = '#c7d2e0';
 
-const ALL_OBJECT_TYPES: ObjectType[] = ['AC', 'ФП', 'Сервис', 'ИР', 'Схема', 'Таблица ФМД'];
+const STORAGE_KEY_SETTINGS = 'graph-display-settings';
+const STORAGE_KEY_POSITIONS = 'graph-node-positions';
 
-function buildInitialSettings(): DisplaySettings {
-  const objectTypes = Object.fromEntries(ALL_OBJECT_TYPES.map((t) => [t, true])) as Record<ObjectType, boolean>;
-  const edgeTypes = Object.fromEntries(
-    [...new Set(edgeDefs.map((e) => e.type))].map((t) => [t, true]),
-  ) as Record<EdgeType, boolean>;
-  const islandTypes = Object.fromEntries(
-    [...new Set(islandDefs.map((i) => i.type))].map((t) => [t, true]),
-  ) as Record<IslandType, boolean>;
-  const nodeNames = Object.fromEntries(nodeDefs.map((n) => [n.id, true]));
-  const islandNames = Object.fromEntries(islandDefs.map((i) => [i.id, true]));
-  return {
-    onlySelectedAndNeighbors: false,
-    onlyFirst10PerIsland: false,
-    hideAllIslands: false,
-    objectTypes,
-    edgeTypes,
-    islandTypes,
-    nodeNames,
-    islandNames,
-  };
+export type InteractionMode = 'hand' | 'cursor';
+
+function loadPositions(): PosMap {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY_POSITIONS) || '{}') as PosMap; }
+  catch { return {}; }
 }
-
-const STORAGE_KEY = 'graph-display-settings';
-const POS_KEY = 'graph-node-positions';
 
 interface FlowCanvasProps {
   derivedNodes: Node[];
   edges: Edge[];
-  nodesDraggable: boolean;
+  isEditMode: boolean;
+  interactionMode: InteractionMode;
   onNodeClick: NodeMouseHandler;
   onEdgeClick: EdgeMouseHandler;
   onPaneClick: () => void;
-  onNodeDragStop: (e: unknown, node: Node) => void;
+  onNodeDragStop: (e: unknown, node: Node, draggedNodes: Node[]) => void;
+  /** Передаёт setNodes из useNodesState родителю (нужен для скриншота). */
+  setNodesExternal: (setter: (payload: Node[] | ((ns: Node[]) => Node[])) => void) => void;
+  onAlignH: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => void;
+  onAlignV: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => void;
+  onElkLayout: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => Promise<void>;
 }
 
-/**
- * Холст с СОБСТВЕННЫМ состоянием узлов (useNodesState). Живое перетаскивание
- * меняет только это состояние → родитель (панели/тулбар) не перерисовывается.
- * Структурные изменения (фильтры/выбор/сброс) приходят через derivedNodes.
- */
-function FlowCanvas({
-  derivedNodes,
-  edges,
-  nodesDraggable,
-  onNodeClick,
-  onEdgeClick,
-  onPaneClick,
-  onNodeDragStop,
+const FlowCanvas = memo(function FlowCanvas({
+  derivedNodes, edges, isEditMode, interactionMode,
+  onNodeClick, onEdgeClick, onPaneClick, onNodeDragStop,
+  setNodesExternal, onAlignH, onAlignV, onElkLayout,
 }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(derivedNodes);
 
   useEffect(() => {
-    setNodes(derivedNodes);
+    setNodes((current) => {
+      const selected = new Map(current.map((n) => [n.id, n.selected]));
+      return derivedNodes.map((n) => ({
+        ...n,
+        selected: selected.get(n.id) ?? false,
+      }));
+    });
   }, [derivedNodes, setNodes]);
 
-  return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodeClick={onNodeClick}
-      onEdgeClick={onEdgeClick}
-      onPaneClick={onPaneClick}
-      onNodesChange={onNodesChange}
-      onNodeDragStop={onNodeDragStop}
-      nodesDraggable={nodesDraggable}
-      selectNodesOnDrag={false}
-      elevateNodesOnSelect={false}
-      fitView
-      minZoom={0.2}
-      maxZoom={2.5}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="#c7d2e0" />
-    </ReactFlow>
+  const setNodesExternalRef = useRef(setNodesExternal);
+  setNodesExternalRef.current = setNodesExternal;
+  useEffect(() => { setNodesExternalRef.current(setNodes); }, [setNodes]);
+
+  const isHand = interactionMode === 'hand';
+
+  // Квантизованный уровень зума: селектор возвращает примитив (0|1|2), поэтому
+  // Zustand сравнивает через Object.is и не триггерит ре-рендер при пане/зуме
+  // внутри того же порога. При переходе порога все CustomNode ре-рендерятся
+  // через контекст — это дёшево и случается редко.
+  const zoomTier = useStore(
+    (s: { transform: [number, number, number] }) => {
+      const z = s.transform[2];
+      return z < 0.2 ? 0 : z < 0.5 ? 1 : 2;
+    },
+  ) as 0 | 1 | 2;
+
+  // Получаем ID выбранных узлов через store-селектор с shallow-сравнением.
+  // В отличие от nodes.filter(), это НЕ пересчитывается при каждом drag-событии —
+  // только когда набор выбранных узлов реально изменился.
+  // shallow передаётся вторым аргументом — это equalityFn.
+  // Правильный способ для useStore из @xyflow/react: selector + equalityFn.
+  // useShallow в качестве selector (а не equalityFn) создаёт новую функцию
+  // на каждый рендер и не гарантирует стабильность при частых store-обновлениях.
+  const selectedIds = useStore(
+    (s: { nodeLookup: Map<string, Node> }) =>
+      [...s.nodeLookup.values()]
+        .filter((n) => n.selected)
+        .map((n) => n.id),
+    shallow,
   );
-}
 
-type PosMap = Record<string, { x: number; y: number }>;
+  const selectedGraphIds = useStore(
+    (s: { nodeLookup: Map<string, Node> }) =>
+      [...s.nodeLookup.values()]
+        .filter((n) => n.selected && n.type === 'graph')
+        .map((n) => n.id),
+    shallow,
+  );
 
-function loadPositions(): PosMap {
-  try {
-    return JSON.parse(localStorage.getItem(POS_KEY) || '{}') as PosMap;
-  } catch {
-    return {};
-  }
-}
+  const [selectionLayoutTick, setSelectionLayoutTick] = useState(0);
+  const bumpSelectionLayout = useCallback(() => {
+    setSelectionLayoutTick((t) => t + 1);
+  }, []);
+
+  return (
+    <ZoomTierContext.Provider value={zoomTier}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={RF_NODE_TYPES}
+        edgeTypes={RF_EDGE_TYPES}
+        onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
+        onPaneClick={onPaneClick}
+        onNodesChange={onNodesChange}
+        onNodeDragStop={onNodeDragStop}
+        onNodeDrag={bumpSelectionLayout}
+        onMove={bumpSelectionLayout}
+        nodesDraggable={isEditMode}
+        selectionMode={SelectionMode.Partial}
+        selectionOnDrag={!isHand}
+        panOnDrag={isHand ? true : [1, 2]}
+        panOnScroll={false}
+        selectNodesOnDrag={!isHand && isEditMode ? false : !isHand}
+        elevateNodesOnSelect={false}
+        multiSelectionKeyCode={null}
+        deleteKeyCode={null}
+        fitView
+        minZoom={MIN_ZOOM}
+        maxZoom={MAX_ZOOM}
+        proOptions={{ hideAttribution: true }}
+        // ── Оптимизации производительности ──────────────────────────────────
+        // onlyRenderVisibleElements намеренно отключён: при пане узлы на границе
+        // viewport постоянно монтируются/размонтируются → видимое мигание.
+        // Вместо этого держим все узлы в DOM, но с React.memo — они не
+        // перерисовываются при пане (RF меняет только CSS-трансформ контейнера).
+        nodesConnectable={false}    // нет динамического соединения узлов
+        nodesFocusable={false}      // нет клавиатурной навигации по узлам
+      >
+        <Background variant={BackgroundVariant.Dots} gap={BG_GAP} size={BG_DOT_SIZE} color={BG_DOT_COLOR} />
+      </ReactFlow>
+      <SelectionToolbar
+        selectedIds={selectedIds}
+        isEditMode={isEditMode}
+        onAlignH={() => onAlignH(selectedGraphIds, setNodes)}
+        onAlignV={() => onAlignV(selectedGraphIds, setNodes)}
+        onElkLayout={() => onElkLayout(selectedGraphIds, setNodes)}
+        layoutTick={selectionLayoutTick}
+        onLayoutBump={bumpSelectionLayout}
+      />
+    </ZoomTierContext.Provider>
+  );
+});
 
 function GraphInner() {
   const [positions, setPositions] = useState<Map<string, LaidOutNode> | null>(null);
   const [selected, setSelected] = useState<SelectedEntity | null>(null);
+  const [showDetailPanel, setShowDetailPanel] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>('hand');
   const [savedPositions, setSavedPositions] = useState<PosMap>(loadPositions);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const defaultSettings = useMemo(
+    () => buildInitialSettings(nodeDefs, edgeDefs, islandDefs),
+    [],
+  );
+
   const [settings, setSettings] = useState<DisplaySettings>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
     if (saved) {
       try {
-        return { ...buildInitialSettings(), ...JSON.parse(saved) };
-      } catch {
-        /* ignore */
-      }
+        const parsed = JSON.parse(saved) as Partial<DisplaySettings>;
+        // nodeNames и islandNames мёрджим: дефолт (все видимы) + сохранённые
+        // скрытия. Это позволяет безболезненно переключаться между наборами данных.
+        return {
+          ...defaultSettings,
+          ...parsed,
+          nodeNames: { ...defaultSettings.nodeNames, ...(parsed.nodeNames ?? {}) },
+          islandNames: { ...defaultSettings.islandNames, ...(parsed.islandNames ?? {}) },
+        };
+      } catch { /* повреждённые данные */ }
     }
-    return buildInitialSettings();
+    return defaultSettings;
   });
+
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const flowSetNodesRef = useRef<((payload: Node[] | ((ns: Node[]) => Node[])) => void) | null>(null);
+  const toolbarPos = useToolbarPosition();
+  const reportLayout = useReportLayout();
+
+  const layoutLoading = positions === null;
 
   useEffect(() => {
-    let alive = true;
-    runElkLayout(nodeDefs, edgeDefs).then((map) => {
-      if (alive) setPositions(map);
-    });
-    return () => {
-      alive = false;
-    };
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
-  // ── видимость узлов по фильтрам ───────────────────────────────────────────
-  const visibleNodeIds = useMemo(() => {
-    let ids = nodeDefs
-      .filter((n) => settings.objectTypes[n.type] && settings.nodeNames[n.id])
-      .map((n) => n.id);
-
-    if (settings.onlyFirst10PerIsland && positions) {
-      const allow = new Set<string>();
-      for (const island of islandDefs) {
-        const members = nodeDefs
-          .filter((n) => n.islandIds.includes(island.id) && ids.includes(n.id))
-          .sort((a, b) => {
-            const pa = positions.get(a.id);
-            const pb = positions.get(b.id);
-            return (pa?.y ?? 0) - (pb?.y ?? 0) || (pa?.x ?? 0) - (pb?.x ?? 0);
-          })
-          .slice(0, 10);
-        members.forEach((m) => allow.add(m.id));
-      }
-      nodeDefs.filter((n) => n.islandIds.length === 0).forEach((n) => allow.add(n.id));
-      ids = ids.filter((id) => allow.has(id));
-    }
-
-    if (settings.onlySelectedAndNeighbors && selected?.kind === 'node') {
-      const focus = selected.data.id;
-      const keep = new Set<string>([focus]);
-      edgeDefs.forEach((e) => {
-        if (e.source === focus) keep.add(e.target);
-        if (e.target === focus) keep.add(e.source);
-      });
-      ids = ids.filter((id) => keep.has(id));
-    }
-
-    return new Set(ids);
-  }, [settings, positions, selected]);
-
-  // ── узлы островов (фон) ───────────────────────────────────────────────────
-  const islandRfNodes = useMemo<Node[]>(() => {
-    if (!positions || settings.hideAllIslands) return [];
-    const out: Node[] = [];
-    for (const island of islandDefs) {
-      if (!settings.islandTypes[island.type] || !settings.islandNames[island.id]) continue;
-      const members = nodeDefs.filter(
-        (n) => n.islandIds.includes(island.id) && visibleNodeIds.has(n.id),
+  useEffect(() => {
+    // Если есть пресет-позиции (из сгенерированного файла) — ELK не нужен
+    if (Object.keys(PRESET_POSITIONS).length > 0) {
+      setPositions(
+        new Map(Object.entries(PRESET_POSITIONS).map(([id, p]) => [id, { id, x: p.x, y: p.y }])),
       );
-      if (members.length === 0) continue;
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-      for (const m of members) {
-        const base = positions.get(m.id);
-        if (!base) continue;
-        const p = savedPositions[m.id] ?? base;
-        const { width: mw, height: mh } = getNodeSize(m.additionalParams);
-        minX = Math.min(minX, p.x);
-        minY = Math.min(minY, p.y);
-        maxX = Math.max(maxX, p.x + mw);
-        maxY = Math.max(maxY, p.y + mh);
-      }
-      const x = minX - ISLAND_PAD;
-      const y = minY - ISLAND_PAD - ISLAND_HEADER;
-      const width = maxX - minX + ISLAND_PAD * 2;
-      const height = maxY - minY + ISLAND_PAD * 2 + ISLAND_HEADER;
-      out.push({
-        id: `island-${island.id}`,
-        type: 'island',
-        position: { x, y },
-        data: { def: island, width, height },
-        draggable: false,
-        selectable: true,
-        selected: selected?.kind === 'island' && selected.data.id === island.id,
-        zIndex: selected?.kind === 'island' && selected.data.id === island.id ? Z_ISLAND_SELECTED : Z_ISLAND,
-        style: { width, height },
-      });
+      return;
     }
-    return out;
-  }, [positions, visibleNodeIds, settings, selected, savedPositions]);
+    let alive = true;
+    runElkLayout(nodeDefs, edgeDefs).then((map) => { if (alive) setPositions(map); });
+    return () => { alive = false; };
+  }, []);
 
-  // ── узлы графов ──────────────────────────────────────────────────────────
-  const graphRfNodes = useMemo<Node[]>(() => {
-    if (!positions) return [];
-    return nodeDefs
-      .filter((n) => visibleNodeIds.has(n.id))
-      .map((n) => {
-        const base = positions.get(n.id);
-        const p = savedPositions[n.id] ?? base;
-        return {
-          id: n.id,
-          type: 'graph',
-          position: { x: p?.x ?? 0, y: p?.y ?? 0 },
-          data: { def: n },
-          selected: selected?.kind === 'node' && selected.data.id === n.id,
-          zIndex: Z_NODE,
-        } satisfies Node;
-      });
-  }, [positions, visibleNodeIds, selected, savedPositions]);
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+  }, [settings]);
+
+  const visibleNodeIds = useMemo(
+    () => computeVisibleNodeIds(nodeDefs, edgeDefs, settings, selected),
+    [settings, selected],
+  );
+
+  const islandRfNodes = useMemo<Node[]>(
+    () => positions
+      ? computeIslandNodes(nodeDefs, islandDefs, positions, visibleNodeIds, settings, selected, savedPositions)
+      : [],
+    [positions, visibleNodeIds, settings, selected, savedPositions],
+  );
+
+  // selected намеренно исключён из зависимостей — React Flow сам управляет
+  // visual-selection через NodeProps.selected. Это предотвращает пересчёт
+  // тысяч нод/рёбер при каждом клике.
+  const graphRfNodes = useMemo<Node[]>(
+    () => positions
+      ? computeGraphNodes(nodeDefs, positions, visibleNodeIds, savedPositions)
+      : [],
+    [positions, visibleNodeIds, savedPositions],
+  );
 
   const rfNodes = useMemo(() => [...islandRfNodes, ...graphRfNodes], [islandRfNodes, graphRfNodes]);
 
-  const rfEdges = useMemo<Edge[]>(() => {
-    return edgeDefs
-      .filter(
-        (e) =>
-          settings.edgeTypes[e.type] &&
-          visibleNodeIds.has(e.source) &&
-          visibleNodeIds.has(e.target),
-      )
-      .map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        sourceHandle: 'l',
-        targetHandle: 'r',
-        type: 'custom',
-        data: { def: e },
-        zIndex: Z_EDGE,
-        selected: selected?.kind === 'edge' && selected.data.id === e.id,
-      }));
-  }, [settings, visibleNodeIds, selected]);
+  const rfEdges = useMemo<Edge[]>(
+    () => computeEdges(edgeDefs, settings, visibleNodeIds, positions, savedPositions),
+    [settings, visibleNodeIds, positions, savedPositions],
+  );
+
+  const filterStats = useMemo(() => ({
+    changed: isFiltersChanged(settings, defaultSettings),
+    nodes: [visibleNodeIds.size, nodeDefs.length] as [number, number],
+    edges: [rfEdges.length, edgeDefs.length] as [number, number],
+    islands: [islandRfNodes.length, islandDefs.length] as [number, number],
+  }), [settings, defaultSettings, visibleNodeIds, rfEdges, islandRfNodes]);
 
   const onNodeClick = useCallback<NodeMouseHandler>((_, node) => {
+    setShowDetailPanel(true);
     if (node.type === 'island') {
       const def = islandDefs.find((i) => `island-${i.id}` === node.id);
       if (def) setSelected({ kind: 'island', data: def });
@@ -295,23 +314,73 @@ function GraphInner() {
   }, []);
 
   const onEdgeClick = useCallback<EdgeMouseHandler>((_, edge) => {
+    setShowDetailPanel(true);
     const def = edgeDefs.find((e) => e.id === edge.id);
     if (def) setSelected({ kind: 'edge', data: def });
   }, []);
 
-  const onNodeDragStop = useCallback((_: unknown, node: Node) => {
-    if (node.type === 'island') return;
+  const onNodeDragStop = useCallback((_: unknown, _node: Node, draggedNodes: Node[]) => {
     setSavedPositions((prev) => {
-      const next = { ...prev, [node.id]: { x: node.position.x, y: node.position.y } };
-      localStorage.setItem(POS_KEY, JSON.stringify(next));
+      const next = { ...prev };
+      draggedNodes.forEach((n) => {
+        if (n.type !== 'island') next[n.id] = { x: n.position.x, y: n.position.y };
+      });
+      localStorage.setItem(STORAGE_KEY_POSITIONS, JSON.stringify(next));
       return next;
     });
   }, []);
 
   const onResetPositions = useCallback(() => {
-    localStorage.removeItem(POS_KEY);
+    localStorage.removeItem(STORAGE_KEY_POSITIONS);
     setSavedPositions({});
   }, []);
+
+  const onImportPositions = useCallback((pos: PosMap) => {
+    localStorage.setItem(STORAGE_KEY_POSITIONS, JSON.stringify(pos));
+    setSavedPositions(pos);
+  }, []);
+
+  const getSavedPositions = useCallback(() => savedPositions, [savedPositions]);
+
+  const onAlignH = useCallback(
+    (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => {
+      applyAlignment('h', ids, nodeDefs, positions, savedPositions, setSavedPositions, setNodes);
+    },
+    [positions, savedPositions],
+  );
+
+  const onAlignV = useCallback(
+    (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => {
+      applyAlignment('v', ids, nodeDefs, positions, savedPositions, setSavedPositions, setNodes);
+    },
+    [positions, savedPositions],
+  );
+
+  const onElkLayout = useCallback(
+    (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) =>
+      applyElkLayoutToSelection(
+        ids, nodeDefs, edgeDefs, positions, savedPositions, setSavedPositions, setNodes,
+      ),
+    [positions, savedPositions],
+  );
+
+  const onResetFilters = useCallback(() => {
+    startTransition(() => setSettings(defaultSettings));
+  }, [defaultSettings]);
+
+  const onPaneClick = useCallback(() => {}, []);
+  const onToggleSettings = useCallback(() => setShowSettings((s) => !s), []);
+  const onSettingsClose = useCallback(() => setShowSettings(false), []);
+  const onDetailClose = useCallback(() => {
+    setSelected(null);
+    setShowDetailPanel(false);
+  }, []);
+  const onToggleEdit = useCallback(() => setEditMode((e) => !e), []);
+
+  const onSetFlowNodes = useCallback(
+    (setter: (payload: Node[] | ((ns: Node[]) => Node[])) => void) => { flowSetNodesRef.current = setter; },
+    [],
+  );
 
   const onFullscreen = useCallback(() => {
     const el = wrapperRef.current;
@@ -320,53 +389,86 @@ function GraphInner() {
     else document.exitFullscreen?.();
   }, []);
 
-  // ── элементы для панели настроек ──────────────────────────────────────────
-  const objectTypeItems = ALL_OBJECT_TYPES.map((t) => ({ key: t, label: t }));
-  const edgeTypeItems = [...new Set(edgeDefs.map((e) => e.type))].map((t) => ({ key: t, label: t }));
-  const islandTypeItems = [...new Set(islandDefs.map((i) => i.type))].map((t) => ({ key: t, label: t }));
-  const nodeNameItems = nodeDefs.map((n) => ({ key: n.id, label: n.title }));
-  const islandNameItems = islandDefs.map((i) => ({ key: i.id, label: i.title }));
+  const settingsItems = useMemo(() => ({
+    objectTypeItems: defaultSettings
+      ? Object.keys(defaultSettings.objectTypes).map((t) => ({ key: t, label: t }))
+      : [],
+    edgeTypeItems: [...new Set(edgeDefs.map((e) => e.type))].map((t) => ({ key: t, label: t })),
+    islandTypeItems: [...new Set(islandDefs.map((i) => i.type))].map((t) => ({ key: t, label: t })),
+    nodeNameItems: nodeDefs.map((n) => ({ key: n.id, label: n.title })),
+    islandNameItems: islandDefs.map((i) => ({ key: i.id, label: i.title })),
+  }), [defaultSettings]);
+
+  const canvasStyle = useMemo(() => ({
+    position: 'absolute' as const,
+    inset: 0,
+  }), []);
 
   return (
     <div className={styles.root} ref={wrapperRef}>
-      <FlowCanvas
-        derivedNodes={rfNodes}
-        edges={rfEdges}
-        nodesDraggable={editMode}
-        onNodeClick={onNodeClick}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={() => setSelected(null)}
-        onNodeDragStop={onNodeDragStop}
-      />
+      {layoutLoading && (
+        <div className={styles.layoutOverlay}>
+          <div className={styles.layoutSpinner} />
+          <span>Расчёт компоновки…</span>
+        </div>
+      )}
+      <div style={canvasStyle}>
+        <FlowCanvas
+          derivedNodes={rfNodes}
+          edges={rfEdges}
+          isEditMode={editMode}
+          interactionMode={interactionMode}
+          onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
+          onPaneClick={onPaneClick}
+          onNodeDragStop={onNodeDragStop}
+          setNodesExternal={onSetFlowNodes}
+          onAlignH={onAlignH}
+          onAlignV={onAlignV}
+          onElkLayout={onElkLayout}
+        />
+      </div>
 
       <Toolbar
-        onToggleSettings={() => setShowSettings((s) => !s)}
+        style={{ left: toolbarPos.left, top: toolbarPos.top }}
+        layout={toolbarPos.layout}
+        onToggleSettings={onToggleSettings}
         settingsActive={showSettings}
         onFullscreen={onFullscreen}
+        isFullscreen={isFullscreen}
         editMode={editMode}
-        onToggleEdit={() => setEditMode((e) => !e)}
+        onToggleEdit={onToggleEdit}
+        interactionMode={interactionMode}
+        effectiveMode={interactionMode}
+        onSetInteractionMode={setInteractionMode}
+        filtersChanged={filterStats.changed}
+        filterStats={filterStats}
         hasSavedPositions={Object.keys(savedPositions).length > 0}
         onResetPositions={onResetPositions}
+        onImportPositions={onImportPositions}
+        getSavedPositions={getSavedPositions}
       />
 
       {showSettings && (
         <SettingsPanel
           settings={settings}
-          onChange={setSettings}
-          onClose={() => setShowSettings(false)}
-          onRemember={() => {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-            setShowSettings(false);
-          }}
-          objectTypeItems={objectTypeItems}
-          edgeTypeItems={edgeTypeItems}
-          islandTypeItems={islandTypeItems}
-          nodeNameItems={nodeNameItems}
-          islandNameItems={islandNameItems}
+          onChange={(s) => startTransition(() => setSettings(s))}
+          onClose={onSettingsClose}
+          onReset={onResetFilters}
+          onLayout={reportLayout}
+          {...settingsItems}
         />
       )}
 
-      <DetailPanel selected={selected} onClose={() => setSelected(null)} />
+      {showDetailPanel && (
+        <DetailPanel
+          selected={selected}
+          settings={settings}
+          onChange={(s) => startTransition(() => setSettings(s))}
+          onClose={onDetailClose}
+          onLayout={reportLayout}
+        />
+      )}
     </div>
   );
 }

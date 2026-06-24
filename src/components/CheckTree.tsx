@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { IconCheck, IconMinus } from '@tabler/icons-react';
 import styles from './CheckTree.module.css';
 
@@ -17,7 +17,7 @@ interface CheckTreeProps {
 
 type TriState = 'on' | 'off' | 'mixed';
 
-function Box({ status }: { status: TriState }) {
+const Box = memo(function Box({ status }: { status: TriState }) {
   const cls = status === 'on' ? styles.on : status === 'mixed' ? styles.mixed : '';
   return (
     <span className={`${styles.box} ${cls}`} role="checkbox" aria-checked={status === 'on'}>
@@ -25,9 +25,11 @@ function Box({ status }: { status: TriState }) {
       {status === 'mixed' && <IconMinus size={12} stroke={3} />}
     </span>
   );
-}
+});
 
-export function CheckTree({ rootLabel = 'Все', items, state, onChange, onToggleAll }: CheckTreeProps) {
+export const CheckTree = memo(function CheckTree({
+  rootLabel = 'Все', items, state, onChange, onToggleAll,
+}: CheckTreeProps) {
   const root: TriState = useMemo(() => {
     const vals = items.map((i) => state[i.key]);
     if (vals.length > 0 && vals.every(Boolean)) return 'on';
@@ -35,20 +37,34 @@ export function CheckTree({ rootLabel = 'Все', items, state, onChange, onTogg
     return 'mixed';
   }, [items, state]);
 
+  const handleToggleAll = useCallback(() => onToggleAll(root !== 'on'), [onToggleAll, root]);
+
   return (
     <div>
-      <div className={`${styles.row} ${styles.rowRoot}`} onClick={() => onToggleAll(root !== 'on')}>
+      <div className={`${styles.row} ${styles.rowRoot}`} onClick={handleToggleAll}>
         <Box status={root} />
         <span>{rootLabel}</span>
       </div>
       <div className={styles.children}>
         {items.map((it) => (
-          <div className={styles.row} key={it.key} onClick={() => onChange(it.key, !state[it.key])}>
-            <Box status={state[it.key] ? 'on' : 'off'} />
-            <span>{it.label}</span>
-          </div>
+          <CheckRow key={it.key} item={it} checked={state[it.key]} onChange={onChange} />
         ))}
       </div>
     </div>
   );
-}
+});
+
+const CheckRow = memo(function CheckRow({
+  item, checked, onChange,
+}: { item: CheckItem; checked: boolean; onChange: (key: string, value: boolean) => void }) {
+  const handleClick = useCallback(
+    () => onChange(item.key, !checked),
+    [item.key, checked, onChange],
+  );
+  return (
+    <div className={styles.row} onClick={handleClick}>
+      <Box status={checked ? 'on' : 'off'} />
+      <span>{item.label}</span>
+    </div>
+  );
+});

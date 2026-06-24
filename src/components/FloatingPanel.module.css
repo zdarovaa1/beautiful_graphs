@@ -1,7 +1,7 @@
 .panel {
   position: absolute;
   display: flex;
-  background: rgba(255, 255, 255, 0.97);
+  background: #fff;
   border: 1px solid #dbe6f5;
   border-radius: 14px;
   box-shadow: 0 14px 40px rgba(30, 58, 95, 0.22);
@@ -9,41 +9,126 @@
   animation: slideIn 0.2s ease;
 }
 @keyframes slideIn {
-  from {
-    transform: translateX(24px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  from { transform: translateX(24px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
 }
 
-.resize {
+[data-fp-handle] { cursor: grab; }
+[data-fp-handle]:active { cursor: grabbing; }
+
+/* ── Pinned: вплотную к краям — убираем скругление у прилегающих сторон ── */
+.pinned { box-shadow: 0 8px 28px rgba(30, 58, 95, 0.18); }
+
+.pinned-left   { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.pinned-right  { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.pinned-top    { border-top-left-radius: 0; border-top-right-radius: 0; }
+.pinned-bottom { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+
+.pinned-top-left     { border-radius: 0 0 14px 0; }
+.pinned-top-right    { border-radius: 0 0 0 14px; }
+.pinned-bottom-left  { border-radius: 0 14px 0 0; }
+.pinned-bottom-right { border-radius: 14px 0 0 0; }
+
+.ctrlBtn {
+  position: relative;
+  z-index: 25;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(71, 85, 105, 0.08);
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.ctrlBtn:hover {
+  background: rgba(71, 85, 105, 0.18);
+  color: #1e293b;
+}
+
+/* Активный Pin */
+.ctrlBtnActive {
+  background: rgba(59, 130, 246, 0.14);
+  color: #3b82f6;
+}
+.ctrlBtnActive:hover {
+  background: rgba(59, 130, 246, 0.24);
+  color: #2563eb;
+}
+
+/* ── Свёрнутый мини-бар: фиксированный, внизу экрана, не перемещаемый ── */
+.collapsedBar {
+  position: fixed;
+  bottom: 8px;
+  height: 38px;
+  width: 180px;
+  padding: 0 12px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #dbe6f5;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(30, 58, 95, 0.16);
+  cursor: pointer;
+  user-select: none;
+  transition: box-shadow 0.15s;
+}
+.collapsedBar:hover {
+  box-shadow: 0 6px 22px rgba(30, 58, 95, 0.22);
+}
+.collapsedIcon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+.collapsedTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collapsedChevron {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* ── Resize handles ───────────────────────────────────────────────────── */
+.rh {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 18px;
-  height: 18px;
-  cursor: nwse-resize;
   z-index: 20;
-  background: linear-gradient(
-    135deg,
-    transparent 50%,
-    #b8c6dc 50%,
-    #b8c6dc 60%,
-    transparent 60%,
-    transparent 72%,
-    #b8c6dc 72%,
-    #b8c6dc 82%,
-    transparent 82%
-  );
-  border-bottom-right-radius: 13px;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
 }
+.panel:hover .rh { opacity: 1; }
+.rh:hover { background: rgba(59, 130, 246, 0.25) !important; }
 
-[data-fp-handle] {
-  cursor: grab;
-}
-[data-fp-handle]:active {
-  cursor: grabbing;
+/* Углы — 10×10 */
+.rBR { bottom: 0; right: 0; width: 10px; height: 10px; cursor: nwse-resize; border-bottom-right-radius: 13px; }
+.rTR { top: 0; right: 0; width: 10px; height: 10px; cursor: nesw-resize; border-top-right-radius: 13px; }
+.rTL { top: 0; left: 0; width: 10px; height: 10px; cursor: nwse-resize; border-top-left-radius: 13px; }
+.rBL { bottom: 0; left: 0; width: 10px; height: 10px; cursor: nesw-resize; border-bottom-left-radius: 13px; }
+
+/* Стороны — 4px */
+.rT { top: 0; left: 10px; right: 10px; height: 4px; cursor: n-resize; }
+.rB { bottom: 0; left: 10px; right: 10px; height: 4px; cursor: s-resize; }
+.rL { left: 0; top: 10px; bottom: 10px; width: 4px; cursor: w-resize; }
+.rR { right: 0; top: 10px; bottom: 10px; width: 4px; cursor: e-resize; }
+
+/* ── Snap ghost preview ───────────────────────────────────────────────── */
+.snapGhost {
+  position: absolute;
+  background: rgba(59, 130, 246, 0.12);
+  border: 2px solid rgba(59, 130, 246, 0.45);
+  border-radius: 14px;
+  pointer-events: none;
+  z-index: 9999;
+  transition: all 0.1s ease;
 }

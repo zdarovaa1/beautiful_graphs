@@ -10,7 +10,8 @@ export interface LaidOutNode {
   y: number;
 }
 
-const layoutOptions: Record<string, string> = {
+/** Для небольших графов — иерархический алгоритм (качественная укладка). */
+const LAYOUT_LAYERED: Record<string, string> = {
   'elk.algorithm': 'layered',
   'elk.direction': 'LEFT',
   'elk.layered.spacing.nodeNodeBetweenLayers': '120',
@@ -19,9 +20,28 @@ const layoutOptions: Record<string, string> = {
   'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
 };
 
-export async function runElkLayout(
+/** Для больших графов — силовой алгоритм (быстро, O(n)). */
+const LAYOUT_FORCE: Record<string, string> = {
+  'elk.algorithm': 'force',
+  'elk.force.iterations': '200',
+  'elk.spacing.nodeNode': '60',
+};
+
+const LARGE_GRAPH_THRESHOLD = 200;
+
+const LAYOUT_SELECTION: Record<string, string> = {
+  'elk.algorithm': 'layered',
+  'elk.direction': 'RIGHT',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '100',
+  'elk.spacing.nodeNode': '56',
+  'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+  'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+};
+
+async function runElkWithOptions(
   nodes: GraphNodeDef[],
   edges: GraphEdgeDef[],
+  layoutOptions: Record<string, string>,
 ): Promise<Map<string, LaidOutNode>> {
   const graph = {
     id: 'root',
@@ -43,4 +63,20 @@ export async function runElkLayout(
     map.set(child.id, { id: child.id, x: child.x ?? 0, y: child.y ?? 0 });
   }
   return map;
+}
+
+export async function runElkLayout(
+  nodes: GraphNodeDef[],
+  edges: GraphEdgeDef[],
+): Promise<Map<string, LaidOutNode>> {
+  const isLarge = nodes.length > LARGE_GRAPH_THRESHOLD;
+  return runElkWithOptions(nodes, edges, isLarge ? LAYOUT_FORCE : LAYOUT_LAYERED);
+}
+
+/** Компактная укладка выделенного подграфа */
+export async function runElkSelectionLayout(
+  nodes: GraphNodeDef[],
+  edges: GraphEdgeDef[],
+): Promise<Map<string, LaidOutNode>> {
+  return runElkWithOptions(nodes, edges, LAYOUT_SELECTION);
 }

@@ -11,7 +11,8 @@ export const islands: IslandDef[] = [
   {
     id: 'ord',
     title: 'ОРД',
-    description: 'Остров организационно-распорядительных данных.',
+    shortDescription: 'Организационно-распорядительные данные',
+    description: 'Остров организационно-распорядительных данных. Объединяет АС и ФП, связанные с ведением НСИ.',
     type: 'Домен',
     additionalParams: { color: '#5b8def' },
     attributes: [
@@ -22,7 +23,8 @@ export const islands: IslandDef[] = [
   {
     id: 'platform',
     title: 'Платформа МЕТА',
-    description: 'Остров сервисов платформы метаданных.',
+    shortDescription: 'Сервисы платформы метаданных',
+    description: 'Контур сервисов платформы метаданных. Содержит все микросервисы, обеспечивающие работу МЕТА.',
     type: 'Контур',
     additionalParams: { color: '#22c55e' },
     attributes: [{ name: 'Окружение', value: 'PROD' }],
@@ -34,7 +36,8 @@ export const nodes: GraphNodeDef[] = [
   {
     id: 'meta',
     title: 'МЕТА',
-    description: 'Корневая АС, описывающая метаданные инфоактивов.',
+    shortDescription: 'Корневая АС метаданных',
+    description: 'Корневая АС, описывающая метаданные инфоактивов. Является центральным реестром всех объектов платформы.',
     type: 'AC',
     islandIds: ['ord'],
     additionalParams: {
@@ -55,7 +58,8 @@ export const nodes: GraphNodeDef[] = [
   {
     id: 'infoassets',
     title: 'Инфоактивы',
-    description: 'Функциональная подсистема учёта инфоактивов.',
+    shortDescription: 'ФП учёта инфоактивов',
+    description: 'Функциональная подсистема учёта инфоактивов. Хранит реестр информационных активов организации.',
     type: 'ФП',
     islandIds: ['ord'],
     additionalParams: { color: '#8b5cf6' },
@@ -64,7 +68,8 @@ export const nodes: GraphNodeDef[] = [
   {
     id: 'omd-orm',
     title: 'ОМД ORM',
-    description: 'Сервис объектно-реляционного отображения метаданных.',
+    shortDescription: 'ORM-слой метаданных',
+    description: 'Сервис объектно-реляционного отображения метаданных. Обеспечивает доступ к физической модели данных.',
     type: 'Сервис',
     islandIds: ['ord', 'platform'],
     additionalParams: { color: '#22c55e' },

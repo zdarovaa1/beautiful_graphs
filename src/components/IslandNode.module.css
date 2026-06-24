@@ -5,11 +5,15 @@
   border: 1.5px dashed var(--island-border, rgba(91, 141, 239, 0.4));
   border-radius: 16px;
   background: var(--island-bg, rgba(91, 141, 239, 0.08));
-  backdrop-filter: blur(1px);
-  transition: box-shadow 0.15s, border-style 0.15s;
+  /* backdrop-filter убран: был главным убийцей производительности —
+     браузер сэмплировал и блюрил пиксели за каждым из 60+ больших островов
+     на каждый рендер канваса. */
+  /* contain: paint изолирует repaint острова в его bounds — безопасно,
+     т.к. обычные ноды НЕ являются DOM-детьми острова (они сиблинги). */
+  contain: layout style paint;
+  transition: box-shadow 0.15s;
 }
 .island:hover {
-  border-style: solid;
   box-shadow: 0 6px 18px rgba(30, 58, 95, 0.14);
 }
 .selected {
@@ -25,14 +29,33 @@
   gap: 6px;
   pointer-events: auto;
   cursor: pointer;
+  max-width: calc(100% - 100px);
+}
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
 .title {
   font-size: 13px;
   font-weight: 600;
   color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.subtitle {
+  font-size: 10px;
+  font-weight: 400;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .eye {
   color: #64748b;
+  flex-shrink: 0;
 }
 
 .badge {
