@@ -1,41 +1,36 @@
-import { memo, useMemo, type MouseEvent } from 'react';
+import { memo, type MouseEvent } from 'react';
 import { type NodeProps } from '@xyflow/react';
 import type { CSSProperties } from 'react';
-import { IconEye } from '@tabler/icons-react';
-import type { IslandDef } from '../types';
+import { defaultIslandBg, defaultIslandBorder, defaultBadgeBg, resolveColor } from '../utils/color';
 import { FALLBACK_ISLAND, islandTypeColors } from '../theme';
+import { islandDefById } from '../utils/graphRegistry';
+import type { IslandNodeDataRef } from '../utils/graphRegistry';
 import styles from './IslandNode.module.css';
 
 const stopProp = (e: MouseEvent) => e.stopPropagation();
 
-export interface IslandNodeData extends Record<string, unknown> {
-  def: IslandDef;
-  width: number;
-  height: number;
-}
+function IslandNodeInner({ data, selected }: NodeProps) {
+  const { defId, width, height } = data as IslandNodeDataRef;
+  const def = islandDefById.get(defId);
+  if (!def) return null;
 
-export const IslandNode = memo(function IslandNode({ data, selected }: NodeProps) {
-  const { def, width, height } = data as IslandNodeData;
   const p = def.additionalParams;
-  const color = p.color ?? islandTypeColors[def.type] ?? FALLBACK_ISLAND;
-  const badge = p.badgeColor ?? color;
+  const color = resolveColor(p.color ?? islandTypeColors[def.type], FALLBACK_ISLAND);
+  const badge = resolveColor(p.badgeColor, color);
 
-  const style = useMemo(() => ({
+  const style = {
     width,
     height,
-    '--island-bg': p.background ?? `${color}14`,
-    '--island-border': p.borderColor ?? `${color}66`,
+    '--island-bg': p.background ?? defaultIslandBg(color),
+    '--island-border': p.borderColor ?? defaultIslandBorder(color),
     '--badge-color': badge,
-    '--badge-bg': p.badgeBg ?? `${badge}1f`,
-  } as CSSProperties), [width, height, color, badge, p.background, p.borderColor, p.badgeBg]);
+    '--badge-bg': p.badgeBg ?? defaultBadgeBg(badge),
+  } as CSSProperties;
 
   return (
     <div
       className={`${styles.island} ${selected ? styles.selected : ''}`}
       style={style}
-      // Останавливаем пузырение mouse-событий к React Flow NodeWrapper.
-      // Иначе каждый mousemove над header/badge (у которых pointer-events:auto)
-      // всплывал бы к wrapper'у острова и мог триггерить store-обновления.
       onMouseEnter={stopProp}
       onMouseMove={stopProp}
       onMouseLeave={stopProp}
@@ -47,9 +42,19 @@ export const IslandNode = memo(function IslandNode({ data, selected }: NodeProps
             <span className={styles.subtitle}>{def.shortDescription}</span>
           )}
         </div>
-        <IconEye size={16} className={styles.eye} />
       </div>
       <span className={styles.badge}>{def.type}</span>
     </div>
   );
-});
+}
+
+function islandPropsEqual(prev: NodeProps, next: NodeProps): boolean {
+  return (
+    prev.id === next.id
+    && prev.selected === next.selected
+    && prev.dragging === next.dragging
+    && prev.data === next.data
+  );
+}
+
+export const IslandNode = memo(IslandNodeInner, islandPropsEqual);

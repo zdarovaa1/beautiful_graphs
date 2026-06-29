@@ -1,40 +1,24 @@
-import { createContext, memo, useCallback, useEffect, useMemo, useRef, startTransition, useState } from 'react';
-import {
-  Background,
-  BackgroundVariant,
-  ReactFlow,
-  ReactFlowProvider,
-  SelectionMode,
-  useNodesState,
-  useStore,
-  type Edge,
-  type Node,
-  type NodeMouseHandler,
-  type EdgeMouseHandler,
-} from '@xyflow/react';
-import { shallow } from 'zustand/shallow';
+import { memo, useCallback, useEffect, useMemo, useRef, startTransition, useState, type Dispatch, type SetStateAction } from 'react';
+import { ReactFlowProvider, type Edge, type Node, type NodeMouseHandler, type EdgeMouseHandler } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-// ── источник данных ───────────────────────────────────────────────────────
-// Вариант 1 (по умолчанию): оригинальные данные
-import { edges as edgeDefs, islands as islandDefs, nodes as nodeDefs } from './data/graphData';
-const PRESET_POSITIONS: PosMap = {};
-
-// Вариант 2: сгенерированные моки (сначала запусти: node scripts/generateMocks.mjs)
-// import { mockNodes as nodeDefs, mockEdges as edgeDefs, mockIslands as islandDefs, mockPositions } from './data/generatedMockData';
-// const PRESET_POSITIONS: PosMap = mockPositions;
-
-import { runElkLayout, type LaidOutNode } from './layout/elkLayout';
+import { GraphOverlay } from './components/GraphOverlay';
+import { FlowCanvas } from './components/FlowCanvas';
+import type { LaidOutNode } from './layout/elkLayout';
 import styles from './GraphView.module.css';
 import { useReportLayout, useToolbarPosition } from './SnapLayout';
-import { CustomNode } from './components/CustomNode';
-import { CustomEdge } from './components/CustomEdge';
-import { IslandNode } from './components/IslandNode';
-import { DetailPanel } from './components/DetailPanel';
-import { Toolbar } from './components/Toolbar';
-import { SettingsPanel } from './components/SettingsPanel';
-import { SelectionToolbar } from './components/SelectionToolbar';
-import type { DisplaySettings, SelectedEntity } from './types';
+import type {
+  DisplaySettings,
+  GraphEdgeDef,
+  GraphNodeDef,
+  GraphLayoutBundle,
+  InteractionMode,
+  IslandDef,
+  SelectedEntity,
+} from './types';
+import { GRAPH_ROOT_ID } from './utils/getRootSizes';
+import { applyGraphLayoutBundle } from './utils/graphRegistry';
+import { bundleToLayoutMap, loadGraphBundle } from './utils/loadGraphBundle';
 import {
   buildInitialSettings,
   isFiltersChanged,
@@ -47,201 +31,181 @@ import {
   type PosMap,
 } from './utils/graphHelpers';
 
-const RF_NODE_TYPES = { graph: CustomNode, island: IslandNode };
-const RF_EDGE_TYPES = { custom: CustomEdge };
-
-/**
- * Уровни детализации нод в зависимости от зума:
- *   0 — zoom < 0.2 → крошечный цветной прямоугольник
- *   1 — zoom < 0.5 → только заголовок
- *   2 — zoom ≥ 0.5 → полная детализация
- * Контекст обновляется только при пересечении порогов — не на каждый тик.
- */
-export const ZoomTierContext = createContext<0 | 1 | 2>(2);
-
-const MIN_ZOOM = 0.2;
-const MAX_ZOOM = 2.5;
-const BG_GAP = 22;
-const BG_DOT_SIZE = 1.4;
-const BG_DOT_COLOR = '#c7d2e0';
+export type { InteractionMode } from './types';
 
 const STORAGE_KEY_SETTINGS = 'graph-display-settings';
 const STORAGE_KEY_POSITIONS = 'graph-node-positions';
-
-export type InteractionMode = 'hand' | 'cursor';
 
 function loadPositions(): PosMap {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY_POSITIONS) || '{}') as PosMap; }
   catch { return {}; }
 }
 
-interface FlowCanvasProps {
-  derivedNodes: Node[];
-  edges: Edge[];
-  isEditMode: boolean;
+function mergeDisplaySettings(
+  saved: Partial<DisplaySettings> | null,
+  defaults: DisplaySettings,
+): DisplaySettings {
+  if (!saved) return defaults;
+  return {
+    ...defaults,
+    ...saved,
+    nodeNames: { ...defaults.nodeNames, ...(saved.nodeNames ?? {}) },
+    islandNames: { ...defaults.islandNames, ...(saved.islandNames ?? {}) },
+    islandTypeCascade: {
+      ...defaults.islandTypeCascade,
+      ...(saved.islandTypeCascade ?? {}),
+    },
+    islandNameCascade: {
+      ...defaults.islandNameCascade,
+      ...(saved.islandNameCascade ?? {}),
+    },
+  };
+}
+
+interface GraphCanvasHostProps {
+  nodeDefs: GraphNodeDef[];
+  edgeDefs: GraphEdgeDef[];
+  islandDefs: IslandDef[];
+  positions: Map<string, LaidOutNode>;
+  savedPositions: PosMap;
+  settings: DisplaySettings;
+  defaultSettings: DisplaySettings;
+  focusNodeId: string | null;
+  editMode: boolean;
   interactionMode: InteractionMode;
   onNodeClick: NodeMouseHandler;
   onEdgeClick: EdgeMouseHandler;
   onPaneClick: () => void;
   onNodeDragStop: (e: unknown, node: Node, draggedNodes: Node[]) => void;
-  /** Передаёт setNodes из useNodesState родителю (нужен для скриншота). */
   setNodesExternal: (setter: (payload: Node[] | ((ns: Node[]) => Node[])) => void) => void;
   onAlignH: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => void;
   onAlignV: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => void;
   onElkLayout: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => Promise<void>;
+  onFocusReady: (focus: (entity: SelectedEntity) => void) => void;
+  onFilterStats: (stats: {
+    changed: boolean;
+    nodes: [number, number];
+    edges: [number, number];
+    islands: [number, number];
+  }) => void;
 }
 
-const FlowCanvas = memo(function FlowCanvas({
-  derivedNodes, edges, isEditMode, interactionMode,
-  onNodeClick, onEdgeClick, onPaneClick, onNodeDragStop,
-  setNodesExternal, onAlignH, onAlignV, onElkLayout,
-}: FlowCanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(derivedNodes);
+const GraphCanvasHost = memo(function GraphCanvasHost({
+  nodeDefs,
+  edgeDefs,
+  islandDefs,
+  positions,
+  savedPositions,
+  settings,
+  defaultSettings,
+  focusNodeId,
+  editMode,
+  interactionMode,
+  onNodeClick,
+  onEdgeClick,
+  onPaneClick,
+  onNodeDragStop,
+  setNodesExternal,
+  onAlignH,
+  onAlignV,
+  onElkLayout,
+  onFocusReady,
+  onFilterStats,
+}: GraphCanvasHostProps) {
+  const visibleNodeIds = useMemo(
+    () => computeVisibleNodeIds(nodeDefs, edgeDefs, islandDefs, settings, focusNodeId),
+    [nodeDefs, edgeDefs, islandDefs, settings, focusNodeId],
+  );
+
+  const islandRfNodes = useMemo<Node[]>(
+    () => computeIslandNodes(nodeDefs, islandDefs, positions, visibleNodeIds, settings, savedPositions),
+    [nodeDefs, islandDefs, positions, visibleNodeIds, settings, savedPositions],
+  );
+
+  const graphRfNodes = useMemo<Node[]>(
+    () => computeGraphNodes(nodeDefs, positions, visibleNodeIds, savedPositions),
+    [nodeDefs, positions, visibleNodeIds, savedPositions],
+  );
+
+  const rfNodes = useMemo(() => [...islandRfNodes, ...graphRfNodes], [islandRfNodes, graphRfNodes]);
+
+  const rfEdges = useMemo<Edge[]>(
+    () => computeEdges(edgeDefs, settings, visibleNodeIds, positions, savedPositions),
+    [edgeDefs, settings, visibleNodeIds, positions, savedPositions],
+  );
+
+  const filterStats = useMemo(() => ({
+    changed: isFiltersChanged(settings, defaultSettings),
+    nodes: [visibleNodeIds.size, nodeDefs.length] as [number, number],
+    edges: [rfEdges.length, edgeDefs.length] as [number, number],
+    islands: [islandRfNodes.length, islandDefs.length] as [number, number],
+  }), [settings, defaultSettings, visibleNodeIds, rfEdges, islandRfNodes, nodeDefs.length, edgeDefs.length, islandDefs.length]);
 
   useEffect(() => {
-    setNodes((current) => {
-      const selected = new Map(current.map((n) => [n.id, n.selected]));
-      return derivedNodes.map((n) => ({
-        ...n,
-        selected: selected.get(n.id) ?? false,
-      }));
-    });
-  }, [derivedNodes, setNodes]);
-
-  const setNodesExternalRef = useRef(setNodesExternal);
-  setNodesExternalRef.current = setNodesExternal;
-  useEffect(() => { setNodesExternalRef.current(setNodes); }, [setNodes]);
-
-  const isHand = interactionMode === 'hand';
-
-  // Квантизованный уровень зума: селектор возвращает примитив (0|1|2), поэтому
-  // Zustand сравнивает через Object.is и не триггерит ре-рендер при пане/зуме
-  // внутри того же порога. При переходе порога все CustomNode ре-рендерятся
-  // через контекст — это дёшево и случается редко.
-  const zoomTier = useStore(
-    (s: { transform: [number, number, number] }) => {
-      const z = s.transform[2];
-      return z < 0.2 ? 0 : z < 0.5 ? 1 : 2;
-    },
-  ) as 0 | 1 | 2;
-
-  // Получаем ID выбранных узлов через store-селектор с shallow-сравнением.
-  // В отличие от nodes.filter(), это НЕ пересчитывается при каждом drag-событии —
-  // только когда набор выбранных узлов реально изменился.
-  // shallow передаётся вторым аргументом — это equalityFn.
-  // Правильный способ для useStore из @xyflow/react: selector + equalityFn.
-  // useShallow в качестве selector (а не equalityFn) создаёт новую функцию
-  // на каждый рендер и не гарантирует стабильность при частых store-обновлениях.
-  const selectedIds = useStore(
-    (s: { nodeLookup: Map<string, Node> }) =>
-      [...s.nodeLookup.values()]
-        .filter((n) => n.selected)
-        .map((n) => n.id),
-    shallow,
-  );
-
-  const selectedGraphIds = useStore(
-    (s: { nodeLookup: Map<string, Node> }) =>
-      [...s.nodeLookup.values()]
-        .filter((n) => n.selected && n.type === 'graph')
-        .map((n) => n.id),
-    shallow,
-  );
-
-  const [selectionLayoutTick, setSelectionLayoutTick] = useState(0);
-  const bumpSelectionLayout = useCallback(() => {
-    setSelectionLayoutTick((t) => t + 1);
-  }, []);
+    onFilterStats(filterStats);
+  }, [filterStats, onFilterStats]);
 
   return (
-    <ZoomTierContext.Provider value={zoomTier}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={RF_NODE_TYPES}
-        edgeTypes={RF_EDGE_TYPES}
-        onNodeClick={onNodeClick}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        onNodesChange={onNodesChange}
-        onNodeDragStop={onNodeDragStop}
-        onNodeDrag={bumpSelectionLayout}
-        onMove={bumpSelectionLayout}
-        nodesDraggable={isEditMode}
-        selectionMode={SelectionMode.Partial}
-        selectionOnDrag={!isHand}
-        panOnDrag={isHand ? true : [1, 2]}
-        panOnScroll={false}
-        selectNodesOnDrag={!isHand && isEditMode ? false : !isHand}
-        elevateNodesOnSelect={false}
-        multiSelectionKeyCode={null}
-        deleteKeyCode={null}
-        fitView
-        minZoom={MIN_ZOOM}
-        maxZoom={MAX_ZOOM}
-        proOptions={{ hideAttribution: true }}
-        // ── Оптимизации производительности ──────────────────────────────────
-        // onlyRenderVisibleElements намеренно отключён: при пане узлы на границе
-        // viewport постоянно монтируются/размонтируются → видимое мигание.
-        // Вместо этого держим все узлы в DOM, но с React.memo — они не
-        // перерисовываются при пане (RF меняет только CSS-трансформ контейнера).
-        nodesConnectable={false}    // нет динамического соединения узлов
-        nodesFocusable={false}      // нет клавиатурной навигации по узлам
-      >
-        <Background variant={BackgroundVariant.Dots} gap={BG_GAP} size={BG_DOT_SIZE} color={BG_DOT_COLOR} />
-      </ReactFlow>
-      <SelectionToolbar
-        selectedIds={selectedIds}
-        isEditMode={isEditMode}
-        onAlignH={() => onAlignH(selectedGraphIds, setNodes)}
-        onAlignV={() => onAlignV(selectedGraphIds, setNodes)}
-        onElkLayout={() => onElkLayout(selectedGraphIds, setNodes)}
-        layoutTick={selectionLayoutTick}
-        onLayoutBump={bumpSelectionLayout}
-      />
-    </ZoomTierContext.Provider>
+    <FlowCanvas
+      derivedNodes={rfNodes}
+      edges={rfEdges}
+      isEditMode={editMode}
+      interactionMode={interactionMode}
+      onNodeClick={onNodeClick}
+      onEdgeClick={onEdgeClick}
+      onPaneClick={onPaneClick}
+      onNodeDragStop={onNodeDragStop}
+      setNodesExternal={setNodesExternal}
+      onAlignH={onAlignH}
+      onAlignV={onAlignV}
+      onElkLayout={onElkLayout}
+      onFocusReady={onFocusReady}
+    />
   );
 });
 
 function GraphInner() {
+  const [graphBundle, setGraphBundle] = useState<GraphLayoutBundle | null>(null);
+  const [graphEpoch, setGraphEpoch] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [positions, setPositions] = useState<Map<string, LaidOutNode> | null>(null);
   const [selected, setSelected] = useState<SelectedEntity | null>(null);
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [showDetailPanel, setShowDetailPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('hand');
-  const [savedPositions, setSavedPositions] = useState<PosMap>(loadPositions);
+  const [savedPositions, setSavedPositions] = useState<PosMap>({});
   const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const defaultSettings = useMemo(
-    () => buildInitialSettings(nodeDefs, edgeDefs, islandDefs),
-    [],
-  );
-
-  const [settings, setSettings] = useState<DisplaySettings>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as Partial<DisplaySettings>;
-        // nodeNames и islandNames мёрджим: дефолт (все видимы) + сохранённые
-        // скрытия. Это позволяет безболезненно переключаться между наборами данных.
-        return {
-          ...defaultSettings,
-          ...parsed,
-          nodeNames: { ...defaultSettings.nodeNames, ...(parsed.nodeNames ?? {}) },
-          islandNames: { ...defaultSettings.islandNames, ...(parsed.islandNames ?? {}) },
-        };
-      } catch { /* повреждённые данные */ }
-    }
-    return defaultSettings;
+  const [settings, setSettings] = useState<DisplaySettings | null>(null);
+  const [filterStats, setFilterStats] = useState({
+    changed: false,
+    nodes: [0, 0] as [number, number],
+    edges: [0, 0] as [number, number],
+    islands: [0, 0] as [number, number],
   });
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const flowSetNodesRef = useRef<((payload: Node[] | ((ns: Node[]) => Node[])) => void) | null>(null);
+  const focusEntityRef = useRef<(entity: SelectedEntity) => void>(() => {});
+  const settingsRef = useRef<DisplaySettings | null>(null);
+  settingsRef.current = settings;
+
+  const nodeDefs = graphBundle?.nodes ?? [];
+  const edgeDefs = graphBundle?.edges ?? [];
+  const islandDefs = graphBundle?.islands ?? [];
+
+  const defaultSettings = useMemo(
+    () => (graphBundle
+      ? buildInitialSettings(graphBundle.nodes, graphBundle.edges, graphBundle.islands)
+      : null),
+    [graphBundle],
+  );
+
   const toolbarPos = useToolbarPosition();
   const reportLayout = useReportLayout();
 
-  const layoutLoading = positions === null;
+  const graphLoading = graphBundle === null && loadError === null;
 
   useEffect(() => {
     const onChange = () => setIsFullscreen(!!document.fullscreenElement);
@@ -250,57 +214,73 @@ function GraphInner() {
   }, []);
 
   useEffect(() => {
-    // Если есть пресет-позиции (из сгенерированного файла) — ELK не нужен
-    if (Object.keys(PRESET_POSITIONS).length > 0) {
-      setPositions(
-        new Map(Object.entries(PRESET_POSITIONS).map(([id, p]) => [id, { id, x: p.x, y: p.y }])),
-      );
-      return;
-    }
+    const ac = new AbortController();
     let alive = true;
-    runElkLayout(nodeDefs, edgeDefs).then((map) => { if (alive) setPositions(map); });
-    return () => { alive = false; };
+
+    (async () => {
+      try {
+        const bundle = await loadGraphBundle(ac.signal);
+        if (!alive) return;
+
+        applyGraphLayoutBundle(bundle);
+        const defaults = buildInitialSettings(bundle.nodes, bundle.edges, bundle.islands);
+
+        let savedSettings: Partial<DisplaySettings> | null = null;
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
+          if (raw) savedSettings = JSON.parse(raw) as Partial<DisplaySettings>;
+        } catch { /* ignore */ }
+
+        setGraphBundle(bundle);
+        setPositions(bundleToLayoutMap(bundle));
+        setSavedPositions(loadPositions());
+        setSettings(mergeDisplaySettings(savedSettings, defaults));
+        setGraphEpoch((n) => n + 1);
+        setSelected(null);
+        setFocusNodeId(null);
+        setLoadError(null);
+      } catch (err) {
+        if (!alive || ac.signal.aborted) return;
+        const msg = err instanceof Error ? err.message : 'Не удалось загрузить граф';
+        setLoadError(msg);
+      }
+    })();
+
+    return () => {
+      alive = false;
+      ac.abort();
+    };
   }, []);
 
   useEffect(() => {
+    if (!settings) return;
     localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
   }, [settings]);
 
-  const visibleNodeIds = useMemo(
-    () => computeVisibleNodeIds(nodeDefs, edgeDefs, settings, selected),
-    [settings, selected],
-  );
+  useEffect(() => {
+    if (!settings?.onlySelectedAndNeighbors) {
+      setFocusNodeId(null);
+    }
+  }, [settings?.onlySelectedAndNeighbors]);
 
-  const islandRfNodes = useMemo<Node[]>(
-    () => positions
-      ? computeIslandNodes(nodeDefs, islandDefs, positions, visibleNodeIds, settings, selected, savedPositions)
-      : [],
-    [positions, visibleNodeIds, settings, selected, savedPositions],
-  );
-
-  // selected намеренно исключён из зависимостей — React Flow сам управляет
-  // visual-selection через NodeProps.selected. Это предотвращает пересчёт
-  // тысяч нод/рёбер при каждом клике.
-  const graphRfNodes = useMemo<Node[]>(
-    () => positions
-      ? computeGraphNodes(nodeDefs, positions, visibleNodeIds, savedPositions)
-      : [],
-    [positions, visibleNodeIds, savedPositions],
-  );
-
-  const rfNodes = useMemo(() => [...islandRfNodes, ...graphRfNodes], [islandRfNodes, graphRfNodes]);
-
-  const rfEdges = useMemo<Edge[]>(
-    () => computeEdges(edgeDefs, settings, visibleNodeIds, positions, savedPositions),
-    [settings, visibleNodeIds, positions, savedPositions],
-  );
-
-  const filterStats = useMemo(() => ({
-    changed: isFiltersChanged(settings, defaultSettings),
-    nodes: [visibleNodeIds.size, nodeDefs.length] as [number, number],
-    edges: [rfEdges.length, edgeDefs.length] as [number, number],
-    islands: [islandRfNodes.length, islandDefs.length] as [number, number],
-  }), [settings, defaultSettings, visibleNodeIds, rfEdges, islandRfNodes]);
+  const onFilterStats = useCallback((stats: {
+    changed: boolean;
+    nodes: [number, number];
+    edges: [number, number];
+    islands: [number, number];
+  }) => {
+    setFilterStats((prev) => (
+      prev.changed === stats.changed
+      && prev.nodes[0] === stats.nodes[0]
+      && prev.nodes[1] === stats.nodes[1]
+      && prev.edges[0] === stats.edges[0]
+      && prev.edges[1] === stats.edges[1]
+      && prev.islands[0] === stats.islands[0]
+      && prev.islands[1] === stats.islands[1]
+        ? prev
+        : stats
+    ));
+  }, []);
 
   const onNodeClick = useCallback<NodeMouseHandler>((_, node) => {
     setShowDetailPanel(true);
@@ -309,14 +289,30 @@ function GraphInner() {
       if (def) setSelected({ kind: 'island', data: def });
       return;
     }
+    if (settingsRef.current?.onlySelectedAndNeighbors) {
+      setFocusNodeId(node.id);
+    }
     const def = nodeDefs.find((n) => n.id === node.id);
     if (def) setSelected({ kind: 'node', data: def });
-  }, []);
+  }, [nodeDefs, islandDefs]);
 
   const onEdgeClick = useCallback<EdgeMouseHandler>((_, edge) => {
     setShowDetailPanel(true);
     const def = edgeDefs.find((e) => e.id === edge.id);
     if (def) setSelected({ kind: 'edge', data: def });
+  }, [edgeDefs]);
+
+  const onFocusReady = useCallback((focus: (entity: SelectedEntity) => void) => {
+    focusEntityRef.current = focus;
+  }, []);
+
+  const onSelectEntity = useCallback((entity: SelectedEntity) => {
+    setSelected(entity);
+    setShowDetailPanel(true);
+    if (entity.kind === 'node' && settingsRef.current?.onlySelectedAndNeighbors) {
+      setFocusNodeId(entity.data.id);
+    }
+    focusEntityRef.current(entity);
   }, []);
 
   const onNodeDragStop = useCallback((_: unknown, _node: Node, draggedNodes: Node[]) => {
@@ -344,29 +340,41 @@ function GraphInner() {
 
   const onAlignH = useCallback(
     (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => {
+      if (!positions) return;
       applyAlignment('h', ids, nodeDefs, positions, savedPositions, setSavedPositions, setNodes);
     },
-    [positions, savedPositions],
+    [nodeDefs, positions, savedPositions],
   );
 
   const onAlignV = useCallback(
     (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => {
+      if (!positions) return;
       applyAlignment('v', ids, nodeDefs, positions, savedPositions, setSavedPositions, setNodes);
     },
-    [positions, savedPositions],
+    [nodeDefs, positions, savedPositions],
   );
 
   const onElkLayout = useCallback(
-    (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) =>
-      applyElkLayoutToSelection(
+    (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => {
+      if (!positions) return Promise.resolve();
+      return applyElkLayoutToSelection(
         ids, nodeDefs, edgeDefs, positions, savedPositions, setSavedPositions, setNodes,
-      ),
-    [positions, savedPositions],
+      );
+    },
+    [nodeDefs, edgeDefs, positions, savedPositions],
   );
 
   const onResetFilters = useCallback(() => {
+    if (!defaultSettings) return;
     startTransition(() => setSettings(defaultSettings));
   }, [defaultSettings]);
+
+  const handleSettingsChange: Dispatch<SetStateAction<DisplaySettings>> = useCallback((s) => {
+    setSettings((prev) => {
+      if (!prev) return prev;
+      return typeof s === 'function' ? s(prev) : s;
+    });
+  }, []);
 
   const onPaneClick = useCallback(() => {}, []);
   const onToggleSettings = useCallback(() => setShowSettings((s) => !s), []);
@@ -389,83 +397,102 @@ function GraphInner() {
     else document.exitFullscreen?.();
   }, []);
 
-  const settingsItems = useMemo(() => ({
-    objectTypeItems: defaultSettings
-      ? Object.keys(defaultSettings.objectTypes).map((t) => ({ key: t, label: t }))
-      : [],
-    edgeTypeItems: [...new Set(edgeDefs.map((e) => e.type))].map((t) => ({ key: t, label: t })),
-    islandTypeItems: [...new Set(islandDefs.map((i) => i.type))].map((t) => ({ key: t, label: t })),
-    nodeNameItems: nodeDefs.map((n) => ({ key: n.id, label: n.title })),
-    islandNameItems: islandDefs.map((i) => ({ key: i.id, label: i.title })),
-  }), [defaultSettings]);
+  const settingsItems = useMemo(() => {
+    if (!defaultSettings) {
+      return {
+        objectTypeItems: [],
+        edgeTypeItems: [],
+        islandTypeItems: [],
+        nodeNameItems: [],
+        islandNameItems: [],
+      };
+    }
+    return {
+      objectTypeItems: Object.keys(defaultSettings.objectTypes).map((t) => ({ key: t, label: t })),
+      edgeTypeItems: [...new Set(edgeDefs.map((e) => e.type))].map((t) => ({ key: t, label: t })),
+      islandTypeItems: [...new Set(islandDefs.map((i) => i.type))].map((t) => ({ key: t, label: t })),
+      nodeNameItems: nodeDefs.map((n) => ({ key: n.id, label: n.title })),
+      islandNameItems: islandDefs.map((i) => ({ key: i.id, label: i.title })),
+    };
+  }, [defaultSettings, edgeDefs, islandDefs, nodeDefs]);
 
-  const canvasStyle = useMemo(() => ({
-    position: 'absolute' as const,
-    inset: 0,
-  }), []);
+  const toolbarStyle = useMemo(() => ({
+    left: toolbarPos.left,
+    top: toolbarPos.top,
+  }), [toolbarPos.left, toolbarPos.top]);
+
+  const hasSavedPositions = useMemo(
+    () => Object.keys(savedPositions).length > 0,
+    [savedPositions],
+  );
 
   return (
-    <div className={styles.root} ref={wrapperRef}>
-      {layoutLoading && (
+    <div id={GRAPH_ROOT_ID} className={styles.root} ref={wrapperRef}>
+      {(graphLoading || (graphBundle && !positions)) && (
         <div className={styles.layoutOverlay}>
           <div className={styles.layoutSpinner} />
-          <span>Расчёт компоновки…</span>
+          <span>Загрузка графа…</span>
         </div>
       )}
-      <div style={canvasStyle}>
-        <FlowCanvas
-          derivedNodes={rfNodes}
-          edges={rfEdges}
-          isEditMode={editMode}
-          interactionMode={interactionMode}
-          onNodeClick={onNodeClick}
-          onEdgeClick={onEdgeClick}
-          onPaneClick={onPaneClick}
-          onNodeDragStop={onNodeDragStop}
-          setNodesExternal={onSetFlowNodes}
-          onAlignH={onAlignH}
-          onAlignV={onAlignV}
-          onElkLayout={onElkLayout}
-        />
+      {loadError && (
+        <div className={styles.layoutOverlay}>
+          <span>{loadError}</span>
+        </div>
+      )}
+      <div className={styles.canvasHost}>
+        {graphBundle && positions && settings && defaultSettings && (
+          <GraphCanvasHost
+            nodeDefs={nodeDefs}
+            edgeDefs={edgeDefs}
+            islandDefs={islandDefs}
+            positions={positions}
+            savedPositions={savedPositions}
+            settings={settings}
+            defaultSettings={defaultSettings}
+            focusNodeId={focusNodeId}
+            editMode={editMode}
+            interactionMode={interactionMode}
+            onNodeClick={onNodeClick}
+            onEdgeClick={onEdgeClick}
+            onPaneClick={onPaneClick}
+            onNodeDragStop={onNodeDragStop}
+            setNodesExternal={onSetFlowNodes}
+            onAlignH={onAlignH}
+            onAlignV={onAlignV}
+            onElkLayout={onElkLayout}
+            onFocusReady={onFocusReady}
+            onFilterStats={onFilterStats}
+          />
+        )}
       </div>
 
-      <Toolbar
-        style={{ left: toolbarPos.left, top: toolbarPos.top }}
-        layout={toolbarPos.layout}
-        onToggleSettings={onToggleSettings}
-        settingsActive={showSettings}
-        onFullscreen={onFullscreen}
-        isFullscreen={isFullscreen}
-        editMode={editMode}
-        onToggleEdit={onToggleEdit}
-        interactionMode={interactionMode}
-        effectiveMode={interactionMode}
-        onSetInteractionMode={setInteractionMode}
-        filtersChanged={filterStats.changed}
-        filterStats={filterStats}
-        hasSavedPositions={Object.keys(savedPositions).length > 0}
-        onResetPositions={onResetPositions}
-        onImportPositions={onImportPositions}
-        getSavedPositions={getSavedPositions}
-      />
-
-      {showSettings && (
-        <SettingsPanel
+      {settings && (
+        <GraphOverlay
+          toolbarStyle={toolbarStyle}
+          toolbarLayout={toolbarPos.layout}
+          showSettings={showSettings}
+          showDetailPanel={showDetailPanel}
           settings={settings}
-          onChange={(s) => startTransition(() => setSettings(s))}
-          onClose={onSettingsClose}
-          onReset={onResetFilters}
-          onLayout={reportLayout}
-          {...settingsItems}
-        />
-      )}
-
-      {showDetailPanel && (
-        <DetailPanel
           selected={selected}
-          settings={settings}
-          onChange={(s) => startTransition(() => setSettings(s))}
-          onClose={onDetailClose}
+          graphEpoch={graphEpoch}
+          editMode={editMode}
+          interactionMode={interactionMode}
+          isFullscreen={isFullscreen}
+          filterStats={filterStats}
+          hasSavedPositions={hasSavedPositions}
+          settingsItems={settingsItems}
+          onToggleSettings={onToggleSettings}
+          onFullscreen={onFullscreen}
+          onToggleEdit={onToggleEdit}
+          onSetInteractionMode={setInteractionMode}
+          onResetPositions={onResetPositions}
+          onImportPositions={onImportPositions}
+          getSavedPositions={getSavedPositions}
+          onSettingsChange={handleSettingsChange}
+          onSettingsClose={onSettingsClose}
+          onResetFilters={onResetFilters}
+          onDetailClose={onDetailClose}
+          onSelectEntity={onSelectEntity}
           onLayout={reportLayout}
         />
       )}

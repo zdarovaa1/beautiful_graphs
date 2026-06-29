@@ -2,18 +2,18 @@ import type { Node, Edge } from '@xyflow/react';
 import type React from 'react';
 import type {
   GraphNodeDef, GraphEdgeDef, IslandDef,
-  DisplaySettings, SelectedEntity, ObjectType, EdgeType, IslandType,
+  DisplaySettings, ObjectType, EdgeType, IslandType,
 } from '../types';
 import { ALL_OBJECT_TYPES } from '../types';
 import type { LaidOutNode } from '../layout/elkLayout';
 import { runElkSelectionLayout } from '../layout/elkLayout';
 import { getNodeSize } from '../theme';
+import { getEdgeData, getGraphNodeData, getIslandNodeData } from './graphRegistry';
 
 export type PosMap = Record<string, { x: number; y: number }>;
 
 // ─── z-index слои ────────────────────────────────────────────────────────────
 const Z_ISLAND = 0;
-const Z_ISLAND_SELECTED = 4;
 const Z_EDGE = 5;
 const Z_NODE = 6;
 
@@ -45,6 +45,10 @@ export function buildInitialSettings(
     islandTypes: islandTypeMap,
     nodeNames: Object.fromEntries(nodeDefs.map((n) => [n.id, true])),
     islandNames: Object.fromEntries(islandDefs.map((i) => [i.id, true])),
+    islandTypeCascade: Object.fromEntries(
+      [...new Set(islandDefs.map((i) => i.type))].map((t) => [t, true]),
+    ) as Record<IslandType, boolean>,
+    islandNameCascade: Object.fromEntries(islandDefs.map((i) => [i.id, true])),
   };
 }
 
@@ -55,6 +59,8 @@ export function isFiltersChanged(settings: DisplaySettings, defaultSettings: Dis
     Object.values(settings.edgeTypes).some((v) => !v) ||
     Object.values(settings.islandTypes).some((v) => !v) ||
     Object.values(settings.islandNames).some((v) => !v) ||
+    Object.values(settings.islandTypeCascade).some((v) => !v) ||
+    Object.values(settings.islandNameCascade).some((v) => !v) ||
     settings.onlySelectedAndNeighbors !== defaultSettings.onlySelectedAndNeighbors ||
     settings.hideAllIslands !== defaultSettings.hideAllIslands
   );
@@ -63,19 +69,43 @@ export function isFiltersChanged(settings: DisplaySettings, defaultSettings: Dis
 export function computeVisibleNodeIds(
   nodeDefs: GraphNodeDef[],
   edgeDefs: GraphEdgeDef[],
+  islandDefs: IslandDef[],
   settings: DisplaySettings,
-  selected: SelectedEntity | null,
+  focusNodeId: string | null,
 ): Set<string> {
   let ids = nodeDefs
     .filter((n) => settings.objectTypes[n.type] && settings.nodeNames[n.id])
     .map((n) => n.id);
 
-  if (settings.onlySelectedAndNeighbors && selected?.kind === 'node') {
-    const focus = selected.data.id;
-    const keep = new Set([focus]);
+  const hiddenCascadeIslands = new Set<string>();
+  for (const id of Object.keys(settings.islandNames)) {
+    if (settings.islandNames[id] === false && settings.islandNameCascade[id] !== false) {
+      hiddenCascadeIslands.add(id);
+    }
+  }
+  const hiddenCascadeTypes = new Set<IslandType>();
+  for (const type of Object.keys(settings.islandTypes) as IslandType[]) {
+    if (settings.islandTypes[type] === false && settings.islandTypeCascade[type] !== false) {
+      hiddenCascadeTypes.add(type);
+    }
+  }
+  if (hiddenCascadeIslands.size > 0 || hiddenCascadeTypes.size > 0) {
+    ids = ids.filter((id) => {
+      const node = nodeDefs.find((n) => n.id === id);
+      if (!node) return false;
+      return !node.islandIds.some((islandId) => {
+        if (hiddenCascadeIslands.has(islandId)) return true;
+        const island = islandDefs.find((i) => i.id === islandId);
+        return !!island && hiddenCascadeTypes.has(island.type);
+      });
+    });
+  }
+
+  if (settings.onlySelectedAndNeighbors && focusNodeId) {
+    const keep = new Set([focusNodeId]);
     edgeDefs.forEach((e) => {
-      if (e.source === focus) keep.add(e.target);
-      if (e.target === focus) keep.add(e.source);
+      if (e.source === focusNodeId) keep.add(e.target);
+      if (e.target === focusNodeId) keep.add(e.source);
     });
     ids = ids.filter((id) => keep.has(id));
   }
@@ -122,7 +152,6 @@ export function computeIslandNodes(
   positions: Map<string, LaidOutNode>,
   visibleNodeIds: Set<string>,
   settings: DisplaySettings,
-  selected: SelectedEntity | null,
   savedPositions: PosMap,
 ): Node[] {
   if (settings.hideAllIslands) return [];
@@ -165,16 +194,14 @@ export function computeIslandNodes(
     if (!bounds) continue;
 
     const { x, y, width, height } = bounds;
-    const isSelected = selected?.kind === 'island' && selected.data.id === island.id;
     out.push({
       id: `island-${island.id}`,
       type: 'island',
       position: { x, y },
-      data: { def: island, width, height },
+      data: getIslandNodeData(island.id, width, height),
       draggable: false,
       selectable: true,
-      selected: isSelected,
-      zIndex: isSelected ? Z_ISLAND_SELECTED : Z_ISLAND,
+      zIndex: Z_ISLAND,
       style: { width, height },
       width,
       height,
@@ -199,7 +226,7 @@ export function computeGraphNodes(
         id: n.id,
         type: 'graph',
         position: { x: p?.x ?? 0, y: p?.y ?? 0 },
-        data: { def: n },
+        data: getGraphNodeData(n.id),
         zIndex: Z_NODE,
         // Явные размеры позволяют React Flow точнее вычислять позиции.
         width,
@@ -242,7 +269,7 @@ export function computeEdges(
       source: e.source,
       target: e.target,
       type: 'custom',
-      data: { def: e, showLabel: settings.showEdgeLabels },
+      data: getEdgeData(e.id, settings.showEdgeLabels),
       zIndex: Z_EDGE,
       // selected намеренно не задаётся: React Flow управляет им сам,
       // это позволяет не пересчитывать все рёбра при каждом клике.

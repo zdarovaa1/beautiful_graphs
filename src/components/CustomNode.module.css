@@ -13,14 +13,14 @@
   contain: layout style;
 }
 .node:hover {
-  border-color: rgb(172, 201, 255);
+  border-color: var(--node-select-border, rgb(172, 201, 255));
   box-shadow: 0 8px 20px rgba(30, 58, 95, 0.16);
 }
 .selected,
 .selected:hover {
-  border-color: rgb(172, 201, 255);
-  background: rgb(117, 175, 247);
-  box-shadow: 0 0 0 3px rgba(117, 175, 247, 0.3), 0 8px 20px rgba(30, 58, 95, 0.2);
+  border-color: var(--node-select-border, rgb(172, 201, 255));
+  background: var(--node-select-bg, rgb(117, 175, 247));
+  box-shadow: 0 0 0 3px var(--node-select-ring, rgba(117, 175, 247, 0.3)), 0 8px 20px rgba(30, 58, 95, 0.2);
 }
 
 .strip {
@@ -66,10 +66,10 @@
   color: #94a3b8;
 }
 .selected .title {
-  color: #fff;
+  color: var(--title-color, #1e293b);
 }
 .selected .desc {
-  color: rgba(255, 255, 255, 0.85);
+  color: #64748b;
 }
 
 .handle {
@@ -82,6 +82,5 @@
 .nodeTiny {
   position: relative;
   border-radius: 4px;
-  opacity: 0.8;
   contain: layout style paint;
 }

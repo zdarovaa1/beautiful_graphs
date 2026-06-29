@@ -1,4 +1,4 @@
-import { getBezierPath, getStraightPath, Position, type Edge } from '@xyflow/react';
+import { getBezierPath, Position, type Edge } from '@xyflow/react';
 import { getEdgePosition } from '@xyflow/system';
 import type { GraphEdgeDef } from '../types';
 import {
@@ -8,11 +8,18 @@ import {
   FALLBACK_EDGE,
 } from '../theme';
 
-const STRAIGHT_THRESHOLD = 40;
-
 interface EdgeData {
   def?: GraphEdgeDef;
 }
+
+/** Макс. добавка curvature для разводки параллельных связей */
+const SPREAD_CURVATURE_DELTA_MAX = 0.22;
+/** Делитель смещения узлов — чем больше, тем слабее разводка */
+const SPREAD_DISTANCE_DIVISOR = 500;
+/** Мин. итоговый curvature после spread */
+const SPREAD_CURVATURE_FLOOR = 0.12;
+/** Макс. итоговый curvature после spread */
+const SPREAD_CURVATURE_CEILING = 0.55;
 
 export function autoHandles(
   sx: number, sy: number, tx: number, ty: number,
@@ -29,22 +36,63 @@ export function autoHandles(
     : { sourcePosition: Position.Top, targetPosition: Position.Bottom };
 }
 
+/** Разводит параллельные связи: разный curvature по смещению узлов */
+function spreadCurvature(
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+  sourcePosition: Position,
+  base: number,
+): number {
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const isHorizontal = sourcePosition === Position.Left || sourcePosition === Position.Right;
+  const spread = isHorizontal
+    ? Math.max(-SPREAD_CURVATURE_DELTA_MAX, Math.min(SPREAD_CURVATURE_DELTA_MAX, dy / SPREAD_DISTANCE_DIVISOR))
+    : Math.max(-SPREAD_CURVATURE_DELTA_MAX, Math.min(SPREAD_CURVATURE_DELTA_MAX, dx / SPREAD_DISTANCE_DIVISOR));
+  return Math.max(SPREAD_CURVATURE_FLOOR, Math.min(SPREAD_CURVATURE_CEILING, base + spread));
+}
+
 export function computeEdgePathD(
   sourceX: number,
   sourceY: number,
   targetX: number,
   targetY: number,
+  sourcePosition?: Position,
+  targetPosition?: Position,
   curvature = DEFAULT_EDGE_CURVATURE,
 ): string {
-  const { sourcePosition, targetPosition } = autoHandles(sourceX, sourceY, targetX, targetY);
-  const [bezier] = getBezierPath({
+  const handles = sourcePosition && targetPosition
+    ? { sourcePosition, targetPosition }
+    : autoHandles(sourceX, sourceY, targetX, targetY);
+  const c = sourcePosition && targetPosition
+    ? spreadCurvature(sourceX, sourceY, targetX, targetY, sourcePosition, curvature)
+    : curvature;
+  const [path] = getBezierPath({
+    sourceX, sourceY, targetX, targetY,
+    ...handles,
+    curvature: c,
+  });
+  return path;
+}
+
+export function computeEdgePathWithLabel(
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+  sourcePosition: Position,
+  targetPosition: Position,
+  curvature = DEFAULT_EDGE_CURVATURE,
+): { path: string; labelX: number; labelY: number } {
+  const c = spreadCurvature(sourceX, sourceY, targetX, targetY, sourcePosition, curvature);
+  const [path, labelX, labelY] = getBezierPath({
     sourceX, sourceY, targetX, targetY,
     sourcePosition, targetPosition,
-    curvature,
+    curvature: c,
   });
-  const [straight] = getStraightPath({ sourceX, sourceY, targetX, targetY });
-  const dist = Math.hypot(targetX - sourceX, targetY - sourceY);
-  return dist < STRAIGHT_THRESHOLD ? straight : bezier;
+  return { path, labelX, labelY };
 }
 
 export function getEdgeColor(edge: Edge): string {
@@ -63,15 +111,9 @@ export function getEdgeCurvature(edge: Edge): number {
   return def?.additionalParams?.curvature ?? DEFAULT_EDGE_CURVATURE;
 }
 
-export function colorWithAlpha(color: string, alpha: number): string {
-  if (color.startsWith('#') && color.length >= 7) {
-    const r = parseInt(color.slice(1, 3), 16);
-    const g = parseInt(color.slice(3, 5), 16);
-    const b = parseInt(color.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
-  return color;
-}
+import { colorWithAlpha } from './color';
+
+export { colorWithAlpha };
 
 type FlowStore = {
   getState: () => {

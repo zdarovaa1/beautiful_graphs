@@ -2,9 +2,10 @@
  * SnapLayout: позиции snap-панелей (соседние слоты) + toolbar + z-index стек.
  */
 import {
-  createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
 } from 'react';
 import type { SnapEdge, PanelSize } from './components/FloatingPanel';
+import { getInnerHeight, getInnerWidth } from './utils/getRootSizes';
 export type SideSlot = {
   top?: number | string;
   bottom?: number | string;
@@ -18,6 +19,11 @@ export interface ToolbarPosition {
   left: number;
   top: number;
   layout: ToolbarLayout;
+}
+
+/** Флаги chrome toolbar (stats под кнопками) — размеры считаются аналитически */
+export interface ToolbarChrome {
+  showFilterStats: boolean;
 }
 
 export type PanelInfo = {
@@ -35,10 +41,27 @@ const SNAP_GAP = 8;
 const TOOLBAR_MARGIN = 16;
 const TOOLBAR_GAP = 8;
 const TOOLBAR_BTN = 34;
-const TOOLBAR_H_W = 420;
-const TOOLBAR_H_H = TOOLBAR_BTN;
+const TOOLBAR_H_ROW_W = 487;
 const TOOLBAR_V_W = 52;
-const TOOLBAR_V_H = TOOLBAR_BTN * 10 + TOOLBAR_GAP * 9;
+const TOOLBAR_V_H = TOOLBAR_BTN * 11 + TOOLBAR_GAP * 10;
+const TOOLBAR_STATS_GAP = 6;
+const TOOLBAR_STATS_H = 18;
+const TOOLBAR_STATS_V_H = 54;
+
+const DEFAULT_TOOLBAR_CHROME: ToolbarChrome = { showFilterStats: false };
+
+function computeToolbarMetrics(layout: ToolbarLayout, showFilterStats: boolean) {
+  if (layout === 'horizontal') {
+    return {
+      width: TOOLBAR_H_ROW_W,
+      height: TOOLBAR_BTN + (showFilterStats ? TOOLBAR_STATS_GAP + TOOLBAR_STATS_H : 0),
+    };
+  }
+  return {
+    width: TOOLBAR_V_W,
+    height: TOOLBAR_V_H + (showFilterStats ? TOOLBAR_STATS_GAP + TOOLBAR_STATS_V_H : 0),
+  };
+}
 
 const PANEL_Z_BASE = 10;
 function isLeftSnap(s: SnapEdge): s is NonNullable<SnapEdge> {
@@ -57,17 +80,21 @@ function panelRect(p: PanelInfo) {
   return { left: p.left, top: p.top, right: p.left + p.w, bottom: p.top + p.h };
 }
 
-function toolbarBounds(left: number, top: number, layout: ToolbarLayout) {
-  const w = layout === 'horizontal' ? TOOLBAR_H_W : TOOLBAR_V_W;
-  const h = layout === 'horizontal' ? TOOLBAR_H_H : TOOLBAR_V_H;
-  return { left, top, right: left + w, bottom: top + h };
+function toolbarBounds(
+  left: number,
+  top: number,
+  layout: ToolbarLayout,
+  showFilterStats: boolean,
+) {
+  const { width, height } = computeToolbarMetrics(layout, showFilterStats);
+  return { left, top, right: left + width, bottom: top + height };
 }
 function fitsInViewport(tb: ReturnType<typeof toolbarBounds>, margin: number): boolean {
   return (
     tb.left >= margin
     && tb.top >= margin
-    && tb.right <= window.innerWidth - margin
-    && tb.bottom <= window.innerHeight - margin
+    && tb.right <= getInnerWidth() - margin
+    && tb.bottom <= getInnerHeight() - margin
   );
 }
 type SnapCol = {
@@ -181,41 +208,44 @@ function overlapsAnyObstructions(
 }
 function computeToolbarPosition(
   panels: Map<string, PanelInfo>,
+  showFilterStats = false,
 ): ToolbarPosition {
   const obstructions = getPanelObstructions(panels);
   const baseLeft = TOOLBAR_MARGIN;
   const baseTop = TOOLBAR_MARGIN;
   const margin = TOOLBAR_MARGIN;
-  const hBase = toolbarBounds(baseLeft, baseTop, 'horizontal');
+  const hBase = toolbarBounds(baseLeft, baseTop, 'horizontal', showFilterStats);
   if (!overlapsAnyObstructions(hBase, obstructions) && fitsInViewport(hBase, margin)) {
     return { left: baseLeft, top: baseTop, layout: 'horizontal' };
   }
-  const vBase = toolbarBounds(baseLeft, baseTop, 'vertical');
+  const vBase = toolbarBounds(baseLeft, baseTop, 'vertical', showFilterStats);
   if (!overlapsAnyObstructions(vBase, obstructions) && fitsInViewport(vBase, margin)) {
     return { left: baseLeft, top: baseTop, layout: 'vertical' };
   }
   let left = baseLeft;
   let top = baseTop;
   for (const o of obstructions) {
-    const h = toolbarBounds(left, top, 'horizontal');
+    const h = toolbarBounds(left, top, 'horizontal', showFilterStats);
     if (!rectsOverlap(h, o)) continue;
     if (o.left < h.right) left = Math.max(left, o.right + TOOLBAR_GAP);
-    const h2 = toolbarBounds(left, top, 'horizontal');
+    const h2 = toolbarBounds(left, top, 'horizontal', showFilterStats);
     if (rectsOverlap(h2, o)) top = Math.max(top, o.bottom + TOOLBAR_GAP);
   }
-  const hDodged = toolbarBounds(left, top, 'horizontal');
+  const hDodged = toolbarBounds(left, top, 'horizontal', showFilterStats);
   if (!overlapsAnyObstructions(hDodged, obstructions) && fitsInViewport(hDodged, margin)) {
     return { left, top, layout: 'horizontal' };
   }
   let vTop = baseTop;
-  if (vTop + TOOLBAR_V_H > window.innerHeight - margin) {
-    vTop = Math.max(margin, window.innerHeight - margin - TOOLBAR_V_H);
+  const H = getInnerHeight();
+  const vHeight = computeToolbarMetrics('vertical', showFilterStats).height;
+  if (vTop + vHeight > H - margin) {
+    vTop = Math.max(margin, H - margin - vHeight);
   }
   for (const o of obstructions) {
-    const v = toolbarBounds(baseLeft, vTop, 'vertical');
+    const v = toolbarBounds(baseLeft, vTop, 'vertical', showFilterStats);
     if (rectsOverlap(v, o)) vTop = Math.max(vTop, o.bottom + TOOLBAR_GAP);
   }
-  vTop = Math.min(vTop, Math.max(margin, window.innerHeight - margin - TOOLBAR_V_H));
+  vTop = Math.min(vTop, Math.max(margin, H - margin - vHeight));
   return { left: baseLeft, top: vTop, layout: 'vertical' };
 }
 interface SnapLayoutCtx {
@@ -227,6 +257,7 @@ interface SnapLayoutCtx {
   registerPanelStack: (key: string) => void;
   unregisterPanelStack: (key: string) => void;
   reportLayout: (snap: SnapEdge, size: PanelSize | null, key: string, pinned?: boolean) => void;
+  reportToolbarChrome: (chrome: ToolbarChrome) => void;
 }
 const Ctx = createContext<SnapLayoutCtx>({
   toolbarPos: { left: TOOLBAR_MARGIN, top: TOOLBAR_MARGIN, layout: 'horizontal' },
@@ -237,8 +268,10 @@ const Ctx = createContext<SnapLayoutCtx>({
   registerPanelStack: () => {},
   unregisterPanelStack: () => {},
   reportLayout: () => {},
+  reportToolbarChrome: () => {},
 });
 export function useToolbarPosition() { return useContext(Ctx).toolbarPos; }
+export function useReportToolbarChrome() { return useContext(Ctx).reportToolbarChrome; }
 export function useRegisteredPanels() { return useContext(Ctx).panels; }
 export function useSnapSlot(key: string | undefined, snap: SnapEdge): SideSlot | null {
   const { snapSlots } = useContext(Ctx);
@@ -271,11 +304,12 @@ export function useReportLayout() {
 }
 export function SnapLayoutProvider({ children }: { children: ReactNode }) {
   const [panels, setPanels] = useState<Map<string, PanelInfo>>(new Map());
-  const [toolbarPos, setToolbarPos] = useState<ToolbarPosition>({
-    left: TOOLBAR_MARGIN,
-    top: TOOLBAR_MARGIN,
-    layout: 'horizontal',
-  });
+  const [toolbarPos, setToolbarPos] = useState<ToolbarPosition>(() =>
+    computeToolbarPosition(new Map(), DEFAULT_TOOLBAR_CHROME.showFilterStats),
+  );
+  const panelsRef = useRef(panels);
+  panelsRef.current = panels;
+  const chromeRef = useRef<ToolbarChrome>(DEFAULT_TOOLBAR_CHROME);
   const [snapSlots, setSnapSlots] = useState<Map<string, SideSlot>>(new Map());
   const [panelStack, setPanelStack] = useState<string[]>([]);
   const bringPanelToFront = useCallback((key: string) => {
@@ -290,6 +324,14 @@ export function SnapLayoutProvider({ children }: { children: ReactNode }) {
   const unregisterPanelStack = useCallback((key: string) => {
     setPanelStack((prev) => prev.filter((k) => k !== key));
   }, []);
+
+  const reportToolbarChrome = useCallback((chrome: ToolbarChrome) => {
+    const prev = chromeRef.current;
+    if (prev.showFilterStats === chrome.showFilterStats) return;
+    chromeRef.current = chrome;
+    setToolbarPos(computeToolbarPosition(panelsRef.current, chrome.showFilterStats));
+  }, []);
+
   const reportLayout = useCallback((
     snap: SnapEdge,
     size: PanelSize | null,
@@ -312,7 +354,7 @@ export function SnapLayoutProvider({ children }: { children: ReactNode }) {
       }
       const slots = computeSnapSlots(next);
       setSnapSlots(slots);
-      setToolbarPos(computeToolbarPosition(next));
+      setToolbarPos(computeToolbarPosition(next, chromeRef.current.showFilterStats));
       return next;
     });
   }, []);
@@ -326,10 +368,12 @@ export function SnapLayoutProvider({ children }: { children: ReactNode }) {
       registerPanelStack,
       unregisterPanelStack,
       reportLayout,
+      reportToolbarChrome,
     }),
     [
       toolbarPos, panels, snapSlots, panelStack,
       bringPanelToFront, registerPanelStack, unregisterPanelStack, reportLayout,
+      reportToolbarChrome,
     ],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

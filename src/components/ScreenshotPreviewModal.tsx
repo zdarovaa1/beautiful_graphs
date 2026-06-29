@@ -15,7 +15,8 @@ import { captureFlowRaster, waitForFlowPaint, type RasterFormat } from '../utils
 import { CustomNode } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
 import { IslandNode } from './IslandNode';
-import { ZoomTierContext } from '../GraphView';
+import { ZoomTierContext } from '../utils/zoomTier';
+import { Tooltip } from './Tooltip';
 import styles from './ScreenshotPreviewModal.module.css';
 
 const PREVIEW_NODE_TYPES = { graph: CustomNode, island: IslandNode };
@@ -192,19 +193,18 @@ export const ScreenshotPreviewModal = memo(function ScreenshotPreviewModal({
   }, [onClose]);
 
   return createPortal(
-    <div className={styles.overlay} onClick={onClose} role="presentation">
+    <div className={styles.overlay} onClick={onClose}>
       <div
         className={styles.dialog}
         onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="screenshot-preview-title"
       >
         <header className={styles.header}>
           <h2 id="screenshot-preview-title" className={styles.title}>Предпросмотр скриншота</h2>
-          <button type="button" className={styles.closeBtn} onClick={onClose} title="Закрыть">
-            <IconX size={18} />
-          </button>
+          <Tooltip title="Закрыть">
+            <button type="button" className={styles.closeBtn} onClick={onClose}>
+              <IconX size={18} />
+            </button>
+          </Tooltip>
         </header>
 
         <ReactFlowProvider>

@@ -2,6 +2,9 @@ import { createContext, memo, useCallback, useEffect, useMemo, useRef, useState,
 import { IconPin, IconFolder, IconChevronUp, IconMinus } from '@tabler/icons-react';
 import { useCollapsedBarLeft, COLLAPSED_BOTTOM } from '../CollapsedPanels';
 import { usePanelStack, useRegisteredPanels, useSnapSlot, computeSnapSlots, type SideSlot } from '../SnapLayout';
+import { getInnerHeight, getInnerWidth } from '../utils/getRootSizes';
+import { getBoundingClientRect } from '../utils/getBoundingClientRect';
+import { Tooltip } from './Tooltip';
 import styles from './FloatingPanel.module.css';
 
 export interface FloatingPanelActions {
@@ -120,21 +123,23 @@ function applySnap(snap: SnapEdge, r: Rect, maxW: number, _margin = SNAP_MARGIN)
 }
 
 function maxPanelWidth(minW: number): number {
-  return Math.max(minW, Math.floor(window.innerWidth / 3));
+  return Math.max(minW, Math.floor(getInnerWidth() / 3));
 }
 
 function clampRect(r: Rect, minW: number, minH: number, maxW?: number): Rect {
-  const capW = maxW ?? window.innerWidth;
+  const W = getInnerWidth();
+  const H = getInnerHeight();
+  const capW = maxW ?? W;
   return {
-    x: Math.min(window.innerWidth - minW, Math.max(0, r.x)),
-    y: Math.min(window.innerHeight - 40, Math.max(0, r.y)),
-    w: Math.max(minW, Math.min(r.w, capW, window.innerWidth)),
-    h: Math.max(minH, Math.min(r.h, window.innerHeight)),
+    x: Math.min(W - minW, Math.max(0, r.x)),
+    y: Math.min(H - 40, Math.max(0, r.y)),
+    w: Math.max(minW, Math.min(r.w, capW, W)),
+    h: Math.max(minH, Math.min(r.h, H)),
   };
 }
 
 function detectSnap(x: number, y: number, w: number, h: number): SnapEdge {
-  const W = window.innerWidth; const H = window.innerHeight;
+  const W = getInnerWidth(); const H = getInnerHeight();
   const nL = x <= SNAP_THRESHOLD; const nR = x + w >= W - SNAP_THRESHOLD;
   const nT = y <= SNAP_THRESHOLD; const nB = y + h >= H - SNAP_THRESHOLD;
   if (nT && nL) return 'top-left';    if (nT && nR) return 'top-right';
@@ -238,7 +243,7 @@ export const FloatingPanel = memo(function FloatingPanel({
       const el = panelRef.current;
       const key = storageKeyRef.current ?? '';
       if (!el || collapsedRef.current) return;
-      const box = el.getBoundingClientRect();
+      const box = getBoundingClientRect(el);
       onLayoutRef.current?.(
         snapRef.current,
         { w: box.width, h: box.height, left: box.left, top: box.top },
@@ -304,7 +309,7 @@ export const FloatingPanel = memo(function FloatingPanel({
     }
 
     const report = () => {
-      const box = el.getBoundingClientRect();
+      const box = getBoundingClientRect(el);
       onLayoutRef.current?.(
         snapRef.current,
         { w: box.width, h: box.height, left: box.left, top: box.top },
@@ -340,8 +345,10 @@ export const FloatingPanel = memo(function FloatingPanel({
     const s = start.current.rect;
 
     if (mode.current === 'drag') {
-      const nx = Math.min(window.innerWidth - minWidth, Math.max(0, s.x + dx));
-      const ny = Math.min(window.innerHeight - 40, Math.max(0, s.y + dy));
+      const W = getInnerWidth();
+      const H = getInnerHeight();
+      const nx = Math.min(W - minWidth, Math.max(0, s.x + dx));
+      const ny = Math.min(H - 40, Math.max(0, s.y + dy));
       const next: Rect = { ...s, x: nx, y: ny };
       latestDragRectRef.current = next;
       setRect(next);
@@ -352,8 +359,10 @@ export const FloatingPanel = memo(function FloatingPanel({
 
     const dir = mode.current.slice('resize-'.length);
     let { x, y, w, h } = s;
-    if (dir.includes('r')) w = Math.max(minWidth, Math.min(s.w + dx, maxW, window.innerWidth - x));
-    if (dir.includes('b')) h = Math.max(minHeight, Math.min(s.h + dy, window.innerHeight));
+    const W = getInnerWidth();
+    const H = getInnerHeight();
+    if (dir.includes('r')) w = Math.max(minWidth, Math.min(s.w + dx, maxW, W - x));
+    if (dir.includes('b')) h = Math.max(minHeight, Math.min(s.h + dy, H));
     if (dir.includes('l')) {
       const nw = Math.max(minWidth, Math.min(s.w - dx, maxW));
       x = s.x + (s.w - nw);
@@ -372,7 +381,7 @@ export const FloatingPanel = memo(function FloatingPanel({
       let snapped = snap ? applySnap(snap, r, maxW) : r;
       if (snap && isCornerSnap(snap)) {
         const m = pinnedRef.current ? 0 : SNAP_MARGIN;
-        const nh = Math.floor(window.innerHeight / 2) - m * 1.5;
+        const nh = Math.floor(getInnerHeight() / 2) - m * 1.5;
         snapped = { ...snapped, h: Math.max(minHeight, nh) };
       }
       setRect(snapped);
@@ -398,12 +407,10 @@ export const FloatingPanel = memo(function FloatingPanel({
       setDragging(true);
       if (snapRef.current && panelRef.current) {
         const el = panelRef.current;
-        const parent = el.offsetParent as HTMLElement | null;
-        const box = el.getBoundingClientRect();
-        const pb = parent?.getBoundingClientRect() ?? { left: 0, top: 0 };
+        const box = getBoundingClientRect(el);
         const currentRect: Rect = {
-          x: box.left - pb.left,
-          y: box.top - pb.top,
+          x: box.left,
+          y: box.top,
           w: box.width,
           h: box.height,
         };
@@ -417,7 +424,7 @@ export const FloatingPanel = memo(function FloatingPanel({
     } else {
       let r = rect;
       if (snapRef.current && panelRef.current) {
-        const box = panelRef.current.getBoundingClientRect();
+        const box = getBoundingClientRect(panelRef.current);
         r = { ...rect, w: box.width, h: box.height };
         setRect(r);
       }
@@ -447,7 +454,7 @@ export const FloatingPanel = memo(function FloatingPanel({
     const el = panelRef.current;
     const key = storageKeyRef.current ?? '';
     if (el && !collapsedRef.current) {
-      const box = el.getBoundingClientRect();
+      const box = getBoundingClientRect(el);
       onLayoutRef.current?.(
         snapRef.current,
         { w: box.width, h: box.height, left: box.left, top: box.top },
@@ -499,23 +506,25 @@ export const FloatingPanel = memo(function FloatingPanel({
     controls: (
     <>
       {snapEdge && (
+        <Tooltip title={pinned ? 'Открепить' : 'Закрепить на стороне'}>
+          <button
+            className={`${styles.ctrlBtn} ${pinned ? styles.ctrlBtnActive : ''}`}
+            onClick={togglePin}
+            data-no-drag
+          >
+            <IconPin size={13} />
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip title="Свернуть">
         <button
-          className={`${styles.ctrlBtn} ${pinned ? styles.ctrlBtnActive : ''}`}
-          onClick={togglePin}
-          title={pinned ? 'Открепить' : 'Закрепить на стороне'}
+          className={styles.ctrlBtn}
+          onClick={toggleCollapse}
           data-no-drag
         >
-          <IconPin size={13} />
+          <IconMinus size={13} />
         </button>
-      )}
-      <button
-        className={styles.ctrlBtn}
-        onClick={toggleCollapse}
-        title="Свернуть"
-        data-no-drag
-      >
-        <IconMinus size={13} />
-      </button>
+      </Tooltip>
     </>
     ),
     collapse,
@@ -543,16 +552,17 @@ export const FloatingPanel = memo(function FloatingPanel({
   // ── Свёрнутый режим: фиксированный мини-бар внизу экрана ────────────────
   if (collapsed) {
     return (
-      <div
-        className={styles.collapsedBar}
-        style={{ zIndex: effectiveZ, left: collapsedLeft, bottom: COLLAPSED_BOTTOM }}
-        onClick={() => { focusPanel(); toggleCollapse(); }}
-        title="Развернуть"
-      >
-        <IconFolder size={15} className={styles.collapsedIcon} />
-        <span className={styles.collapsedTitle}>{title ?? 'Панель'}</span>
-        <IconChevronUp size={14} className={styles.collapsedChevron} />
-      </div>
+      <Tooltip title="Развернуть">
+        <div
+          className={styles.collapsedBar}
+          style={{ zIndex: effectiveZ, left: collapsedLeft, bottom: COLLAPSED_BOTTOM }}
+          onClick={() => { focusPanel(); toggleCollapse(); }}
+        >
+          <IconFolder size={15} className={styles.collapsedIcon} />
+          <span className={styles.collapsedTitle}>{title ?? 'Панель'}</span>
+          <IconChevronUp size={14} className={styles.collapsedChevron} />
+        </div>
+      </Tooltip>
     );
   }
 

@@ -5,15 +5,20 @@ import {
 } from '@tabler/icons-react';
 import type { ObjectType, EdgeType, IslandType, SelectedEntity, DisplaySettings } from '../types';
 import { FALLBACK_BADGE, islandTypeColors, objectTypeColors } from '../theme';
-import { islands } from '../data/graphData';
+import { defaultDetailBadgeBg, resolveColor } from '../utils/color';
+import { getGraphEdges, getGraphIslands, getGraphNodes } from '../utils/graphRegistry';
 import { FloatingPanel, FloatingPanelActionsContext, type SnapEdge, type PanelSize } from './FloatingPanel';
+import { getInnerHeight, getInnerWidth } from '../utils/getRootSizes';
+import { Tooltip } from './Tooltip';
 import styles from './DetailPanel.module.css';
 
 interface DetailPanelProps {
   selected: SelectedEntity | null;
   settings: DisplaySettings;
+  graphEpoch: number;
   onChange: React.Dispatch<React.SetStateAction<DisplaySettings>>;
   onClose: () => void;
+  onSelectEntity: (entity: SelectedEntity) => void;
   onLayout?: (snap: SnapEdge, size: PanelSize | null, key: string, pinned?: boolean) => void;
 }
 
@@ -21,7 +26,7 @@ const Toggle = memo(function Toggle({
   checked, onChange, children,
 }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
   return (
-    <div className={styles.toggle} onClick={() => onChange(!checked)} role="switch" aria-checked={checked}>
+    <div className={styles.toggle} onClick={() => onChange(!checked)}>
       <span className={`${styles.switch} ${checked ? styles.switchOn : ''}`}>
         <span className={styles.knob} />
       </span>
@@ -32,19 +37,113 @@ const Toggle = memo(function Toggle({
 
 function accentFor(selected: SelectedEntity): string {
   const p = selected.data.additionalParams;
-  if (p.badgeColor) return p.badgeColor as string;
+  if (p.badgeColor) return resolveColor(p.badgeColor as string, FALLBACK_BADGE);
   if (selected.kind === 'island') return islandTypeColors[selected.data.type] ?? FALLBACK_BADGE;
   if (selected.kind === 'node') return objectTypeColors[selected.data.type] ?? FALLBACK_BADGE;
-  return (p.color as string | undefined) ?? FALLBACK_BADGE;
+  return resolveColor(p.color as string | undefined, FALLBACK_BADGE);
 }
 
-const DEFAULT_X = () => Math.max(20, window.innerWidth - 360);
-const DEFAULT_Y = 90;
-const DEFAULT_W = 320;
-const DEFAULT_H = () => Math.min(520, window.innerHeight - 140);
+/** Отступ панели от правого края root-контейнера */
+const PANEL_RIGHT_OFFSET = 360;
+/** Начальная позиция Y панели деталей */
+const PANEL_DEFAULT_Y = 90;
+/** Ширина панели деталей по умолчанию */
+const PANEL_DEFAULT_WIDTH = 320;
+/** Отступ панели от нижнего края root-контейнера */
+const PANEL_BOTTOM_OFFSET = 140;
+/** Макс. высота панели деталей */
+const PANEL_MAX_HEIGHT = 520;
+/** Мин. отступ панели от левого края при расчёте X */
+const PANEL_MIN_LEFT = 20;
+
+const DEFAULT_X = () => Math.max(PANEL_MIN_LEFT, getInnerWidth() - PANEL_RIGHT_OFFSET);
+const DEFAULT_Y = PANEL_DEFAULT_Y;
+const DEFAULT_W = PANEL_DEFAULT_WIDTH;
+const DEFAULT_H = () => Math.min(PANEL_MAX_HEIGHT, getInnerHeight() - PANEL_BOTTOM_OFFSET);
+
+const ContextCard = memo(function ContextCard({
+  title, meta, text, onClick,
+}: {
+  title: string;
+  meta?: string;
+  text?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className={styles.contextCard} onClick={onClick} data-no-drag>
+      <div className={styles.contextName}>{title}</div>
+      {meta && <div className={styles.contextMeta}>{meta}</div>}
+      {text && <div className={styles.contextText}>{text}</div>}
+    </button>
+  );
+});
+
+function downloadText(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function entityMarkdown(selected: SelectedEntity): string {
+  const nodes = getGraphNodes();
+  const edges = getGraphEdges();
+  const islands = getGraphIslands();
+  const d = selected.data;
+  const lines = [
+    `# ${d.title}`,
+    '',
+    `Тип сущности: ${selected.kind}`,
+    `Тип: ${d.type}`,
+    '',
+    d.shortDescription ? `Кратко: ${d.shortDescription}` : '',
+    d.description ? `Описание: ${d.description}` : '',
+    '',
+    '## Атрибуты',
+    ...(d.attributes.length ? d.attributes.map((a) => `- ${a.name}: ${a.value}`) : ['- Нет атрибутов']),
+  ].filter(Boolean);
+
+  if (selected.kind === 'node') {
+    const nodeIslands = selected.data.islandIds
+      .map((id) => islands.find((is) => is.id === id))
+      .filter(Boolean);
+    const nodeEdges = edges.filter((e) => e.source === d.id || e.target === d.id);
+    lines.push('', '## Острова', ...(nodeIslands.length
+      ? nodeIslands.map((is) => `- ${is?.title} (${is?.type})`)
+      : ['- Нет островов']));
+    lines.push('', '## Ближайшие связи', ...(nodeEdges.length
+      ? nodeEdges.map((e) => {
+        const otherId = e.source === d.id ? e.target : e.source;
+        const other = nodes.find((n) => n.id === otherId);
+        return `- ${other?.title ?? otherId}: ${e.type} — ${e.title}`;
+      })
+      : ['- Нет связей']));
+  }
+
+  if (selected.kind === 'island') {
+    const members = nodes.filter((n) => n.islandIds.includes(d.id));
+    lines.push('', '## Вершины в острове', ...(members.length
+      ? members.map((n) => `- ${n.title} (${n.type})`)
+      : ['- Нет вершин']));
+  }
+
+  if (selected.kind === 'edge') {
+    const edge = selected.data;
+    const source = nodes.find((n) => n.id === edge.source);
+    const target = nodes.find((n) => n.id === edge.target);
+    lines.push('', '## Концы связи');
+    lines.push(`- Источник: ${source?.title ?? edge.source} (${source?.type ?? '—'})`);
+    lines.push(`- Цель: ${target?.title ?? edge.target} (${target?.type ?? '—'})`);
+  }
+
+  return `${lines.join('\n')}\n`;
+}
 
 const DetailPanelBody = memo(function DetailPanelBody({
-  selected, settings, onChange, onClose,
+  selected, settings, graphEpoch, onChange, onClose, onSelectEntity,
 }: Omit<DetailPanelProps, 'onLayout'>) {
   const panelActions = useContext(FloatingPanelActionsContext);
 
@@ -60,16 +159,59 @@ const DetailPanelBody = memo(function DetailPanelBody({
 
   const nodeIslands = useMemo(() => {
     if (selected?.kind !== 'node') return [];
+    const islands = getGraphIslands();
     return selected.data.islandIds
       .map((iid) => islands.find((is) => is.id === iid))
       .filter(Boolean);
-  }, [selected]);
+  }, [selected, graphEpoch]);
+
+  const nodeNeighbors = useMemo(() => {
+    if (selected?.kind !== 'node') return [];
+    const edges = getGraphEdges();
+    const nodes = getGraphNodes();
+    return edges
+      .filter((e) => e.source === selected.data.id || e.target === selected.data.id)
+      .map((e) => {
+        const otherId = e.source === selected.data.id ? e.target : e.source;
+        const other = nodes.find((n) => n.id === otherId);
+        return { edge: e, other };
+      });
+  }, [selected, graphEpoch]);
+
+  const islandMembers = useMemo(() => {
+    if (selected?.kind !== 'island') return [];
+    return getGraphNodes().filter((n) => n.islandIds.includes(selected.data.id));
+  }, [selected, graphEpoch]);
+
+  const edgeEndpoints = useMemo(() => {
+    if (selected?.kind !== 'edge') return null;
+    const nodes = getGraphNodes();
+    const { source, target } = selected.data;
+    return {
+      source: nodes.find((n) => n.id === source),
+      target: nodes.find((n) => n.id === target),
+    };
+  }, [selected, graphEpoch]);
+
+  const selectNode = useCallback((id: string) => {
+    const def = getGraphNodes().find((n) => n.id === id);
+    if (def) onSelectEntity({ kind: 'node', data: def });
+  }, [onSelectEntity]);
+
+  const selectIsland = useCallback((id: string) => {
+    const def = getGraphIslands().find((is) => is.id === id);
+    if (def) onSelectEntity({ kind: 'island', data: def });
+  }, [onSelectEntity]);
 
   const setVisible = useCallback((patch: Partial<DisplaySettings>) => {
     onChange((s) => ({ ...s, ...patch }));
   }, [onChange]);
 
   const handleLinksToggle = useCallback(() => setLinksOpen((o) => !o), []);
+  const handleDownload = useCallback(() => {
+    if (!selected) return;
+    downloadText(`${selected.data.id}-details.md`, entityMarkdown(selected));
+  }, [selected]);
 
   if (!selected) {
     return (
@@ -82,9 +224,11 @@ const DetailPanelBody = memo(function DetailPanelBody({
             </h2>
             <div className={styles.titleActions}>
               {panelActions?.controls}
-              <button type="button" className={styles.closeBtn} onClick={onClose} title="Закрыть" data-no-drag>
-                <IconX size={16} />
-              </button>
+              <Tooltip title="Закрыть">
+                <button type="button" className={styles.closeBtn} onClick={onClose} data-no-drag>
+                  <IconX size={16} />
+                </button>
+              </Tooltip>
             </div>
           </div>
         </header>
@@ -106,29 +250,18 @@ const DetailPanelBody = memo(function DetailPanelBody({
         <IconGripVertical size={15} className={styles.grip} />
         <div className={styles.titleRow}>
           <h2 className={styles.title}>{d.title}</h2>
-          <span className={styles.badge} style={{ color: accent, background: `${accent}1f` }}>
+          <span className={styles.badge} style={{ color: accent, background: defaultDetailBadgeBg(accent) }}>
             {d.type}
           </span>
           <div className={styles.titleActions}>
             {panelActions?.controls}
-            <button type="button" className={styles.closeBtn} onClick={onClose} title="Закрыть" data-no-drag>
-              <IconX size={16} />
-            </button>
+            <Tooltip title="Закрыть">
+              <button type="button" className={styles.closeBtn} onClick={onClose} data-no-drag>
+                <IconX size={16} />
+              </button>
+            </Tooltip>
           </div>
         </div>
-        {isNode && nodeIslands.length > 0 && (
-          <div className={styles.islandTags}>
-            {nodeIslands.map((is) => is && (
-              <span
-                key={is.id}
-                className={styles.islandTag}
-                style={{ borderColor: (is.additionalParams.color as string | undefined) ?? '#94a3b8' }}
-              >
-                {is.title}
-              </span>
-            ))}
-          </div>
-        )}
         {'shortDescription' in d && d.shortDescription && (
           <p className={styles.shortDesc}>{d.shortDescription as string}</p>
         )}
@@ -143,6 +276,79 @@ const DetailPanelBody = memo(function DetailPanelBody({
           </div>
         ))}
         {d.attributes.length === 0 && <div className={styles.empty}>Нет атрибутов</div>}
+        {isNode && (
+          <div className={styles.contextBlock}>
+            <div className={styles.divider} />
+            <div>
+              <div className={styles.contextTitle}>Где расположен</div>
+              {nodeIslands.length > 0 ? nodeIslands.map((is) => is && (
+                <ContextCard
+                  key={is.id}
+                  title={is.title}
+                  meta={is.type}
+                  text={is.shortDescription}
+                  onClick={() => selectIsland(is.id)}
+                />
+              )) : <div className={styles.empty}>Нет островов</div>}
+            </div>
+            <div>
+              <div className={styles.contextTitle}>Ближайшие соседи</div>
+              {nodeNeighbors.length > 0 ? nodeNeighbors.map(({ edge, other }) => (
+                <ContextCard
+                  key={edge.id}
+                  title={other?.title ?? 'Неизвестная вершина'}
+                  meta={`${edge.type} · ${edge.title}`}
+                  text={edge.shortDescription}
+                  onClick={() => other && selectNode(other.id)}
+                />
+              )) : <div className={styles.empty}>Нет связей</div>}
+            </div>
+          </div>
+        )}
+        {isIsland && (
+          <div className={styles.contextBlock}>
+            <div className={styles.divider} />
+            <div>
+              <div className={styles.contextTitle}>Вершины в острове</div>
+              {islandMembers.length > 0 ? islandMembers.map((n) => (
+                <ContextCard
+                  key={n.id}
+                  title={n.title}
+                  meta={n.type}
+                  text={n.shortDescription}
+                  onClick={() => selectNode(n.id)}
+                />
+              )) : <div className={styles.empty}>Нет вершин</div>}
+            </div>
+          </div>
+        )}
+        {isEdge && edgeEndpoints && (
+          <div className={styles.contextBlock}>
+            <div className={styles.divider} />
+            <div>
+              <div className={styles.contextTitle}>Концы связи</div>
+              {edgeEndpoints.source && (
+                <ContextCard
+                  title={edgeEndpoints.source.title}
+                  meta={`Источник · ${edgeEndpoints.source.type}`}
+                  text={edgeEndpoints.source.shortDescription}
+                  onClick={() => selectNode(edgeEndpoints.source!.id)}
+                />
+              )}
+              {edgeEndpoints.target && (
+                <ContextCard
+                  title={edgeEndpoints.target.title}
+                  meta={`Цель · ${edgeEndpoints.target.type}`}
+                  text={edgeEndpoints.target.shortDescription}
+                  onClick={() => selectNode(edgeEndpoints.target!.id)}
+                />
+              )}
+              {!edgeEndpoints.source && !edgeEndpoints.target && (
+                <div className={styles.empty}>Вершины не найдены</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {links.length > 0 && (
@@ -201,12 +407,18 @@ const DetailPanelBody = memo(function DetailPanelBody({
             >
               Показывать по типу
             </Toggle>
+            <Toggle
+              checked={settings.islandNameCascade[d.id] !== false}
+              onChange={(v) => setVisible({ islandNameCascade: { ...settings.islandNameCascade, [d.id]: v } })}
+            >
+              Скрыть вместе с вершинами
+            </Toggle>
           </>
         )}
       </div>
 
       <footer className={styles.footer}>
-        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}>
+        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={handleDownload}>
           <IconDownload size={16} /> Атрибуты
         </button>
       </footer>

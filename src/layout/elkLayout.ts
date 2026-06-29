@@ -14,8 +14,8 @@ export interface LaidOutNode {
 const LAYOUT_LAYERED: Record<string, string> = {
   'elk.algorithm': 'layered',
   'elk.direction': 'LEFT',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '120',
-  'elk.spacing.nodeNode': '40',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '180',
+  'elk.spacing.nodeNode': '72',
   'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
   'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
 };
@@ -24,19 +24,14 @@ const LAYOUT_LAYERED: Record<string, string> = {
 const LAYOUT_FORCE: Record<string, string> = {
   'elk.algorithm': 'force',
   'elk.force.iterations': '200',
-  'elk.spacing.nodeNode': '60',
+  'elk.spacing.nodeNode': '90',
 };
 
 const LARGE_GRAPH_THRESHOLD = 200;
 
-const LAYOUT_SELECTION: Record<string, string> = {
-  'elk.algorithm': 'layered',
-  'elk.direction': 'RIGHT',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '100',
-  'elk.spacing.nodeNode': '56',
-  'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-  'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
-};
+function layoutOptionsForNodeCount(count: number): Record<string, string> {
+  return count > LARGE_GRAPH_THRESHOLD ? LAYOUT_FORCE : LAYOUT_LAYERED;
+}
 
 async function runElkWithOptions(
   nodes: GraphNodeDef[],
@@ -69,14 +64,13 @@ export async function runElkLayout(
   nodes: GraphNodeDef[],
   edges: GraphEdgeDef[],
 ): Promise<Map<string, LaidOutNode>> {
-  const isLarge = nodes.length > LARGE_GRAPH_THRESHOLD;
-  return runElkWithOptions(nodes, edges, isLarge ? LAYOUT_FORCE : LAYOUT_LAYERED);
+  return runElkWithOptions(nodes, edges, layoutOptionsForNodeCount(nodes.length));
 }
 
-/** Компактная укладка выделенного подграфа */
+/** Укладка выделенного подграфа — те же ELK-опции, что при первичном рендере */
 export async function runElkSelectionLayout(
   nodes: GraphNodeDef[],
   edges: GraphEdgeDef[],
 ): Promise<Map<string, LaidOutNode>> {
-  return runElkWithOptions(nodes, edges, LAYOUT_SELECTION);
+  return runElkWithOptions(nodes, edges, layoutOptionsForNodeCount(nodes.length));
 }

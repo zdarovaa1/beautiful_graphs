@@ -1,8 +1,11 @@
 import { memo, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
-import { IconChevronDown, IconChevronRight, IconGripVertical, IconUpload, IconDownload, IconX } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronRight, IconGripVertical, IconUpload, IconDownload, IconX, IconRestore } from '@tabler/icons-react';
+import { IconSchema, IconSchemaOff } from '@tabler/icons-react';
 import type { DisplaySettings } from '../types';
 import { CheckTree, type CheckItem } from './CheckTree';
 import { FloatingPanel, FloatingPanelActionsContext, type SnapEdge, type PanelSize } from './FloatingPanel';
+import { getInnerHeight, getInnerWidth } from '../utils/getRootSizes';
+import { Tooltip } from './Tooltip';
 import styles from './SettingsPanel.module.css';
 
 interface SettingsPanelProps {
@@ -23,7 +26,7 @@ const Toggle = memo(function Toggle({
   checked, onChange, children,
 }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
   return (
-    <div className={styles.toggle} onClick={() => onChange(!checked)} role="switch" aria-checked={checked}>
+    <div className={styles.toggle} onClick={() => onChange(!checked)}>
       <span className={`${styles.switch} ${checked ? styles.switchOn : ''}`}>
         <span className={styles.knob} />
       </span>
@@ -48,8 +51,18 @@ const Section = memo(function Section({
   );
 });
 
-function setAll<K extends string>(items: CheckItem[], value: boolean): Record<K, boolean> {
-  return Object.fromEntries(items.map((i) => [i.key, value])) as Record<K, boolean>;
+function setAll<K extends string>(
+  items: CheckItem[],
+  value: boolean,
+  prev?: Record<K, boolean>,
+  keys?: string[],
+): Record<K, boolean> {
+  const allowed = keys ? new Set(keys) : null;
+  const base: Record<string, boolean> = prev ? { ...prev } : {};
+  for (const item of items) {
+    if (!allowed || allowed.has(item.key)) base[item.key] = value;
+  }
+  return base as Record<K, boolean>;
 }
 
 function exportSettings(settings: DisplaySettings) {
@@ -60,10 +73,10 @@ function exportSettings(settings: DisplaySettings) {
   URL.revokeObjectURL(url);
 }
 
-const DEFAULT_X = () => Math.max(20, window.innerWidth - 360);
+const DEFAULT_X = () => Math.max(20, getInnerWidth() - 360);
 const DEFAULT_Y = 90;
 const DEFAULT_W = 320;
-const DEFAULT_H = () => Math.min(620, window.innerHeight - 140);
+const DEFAULT_H = () => Math.min(620, getInnerHeight() - 140);
 
 /**
  * Внутренний компонент — рендерится как child FloatingPanel,
@@ -99,28 +112,72 @@ const SettingsPanelBody = memo(function SettingsPanelBody(props: SettingsPanelPr
 
   const onChangeObjectType = useCallback((k: string, v: boolean) =>
     onChange((s) => ({ ...s, objectTypes: { ...s.objectTypes, [k]: v } })), [onChange]);
-  const onToggleAllObjectTypes = useCallback((v: boolean) =>
-    onChange((s) => ({ ...s, objectTypes: setAll(objectTypeItems, v) })), [onChange, objectTypeItems]);
+  const onToggleAllObjectTypes = useCallback((v: boolean, keys: string[]) =>
+    onChange((s) => ({ ...s, objectTypes: setAll(objectTypeItems, v, s.objectTypes, keys) })), [onChange, objectTypeItems]);
 
   const onChangeNodeName = useCallback((k: string, v: boolean) =>
     onChange((s) => ({ ...s, nodeNames: { ...s.nodeNames, [k]: v } })), [onChange]);
-  const onToggleAllNodeNames = useCallback((v: boolean) =>
-    onChange((s) => ({ ...s, nodeNames: setAll(nodeNameItems, v) })), [onChange, nodeNameItems]);
+  const onToggleAllNodeNames = useCallback((v: boolean, keys: string[]) =>
+    onChange((s) => ({ ...s, nodeNames: setAll(nodeNameItems, v, s.nodeNames, keys) })), [onChange, nodeNameItems]);
 
   const onChangeEdgeType = useCallback((k: string, v: boolean) =>
     onChange((s) => ({ ...s, edgeTypes: { ...s.edgeTypes, [k]: v } })), [onChange]);
-  const onToggleAllEdgeTypes = useCallback((v: boolean) =>
-    onChange((s) => ({ ...s, edgeTypes: setAll(edgeTypeItems, v) })), [onChange, edgeTypeItems]);
+  const onToggleAllEdgeTypes = useCallback((v: boolean, keys: string[]) =>
+    onChange((s) => ({ ...s, edgeTypes: setAll(edgeTypeItems, v, s.edgeTypes, keys) })), [onChange, edgeTypeItems]);
 
   const onChangeIslandType = useCallback((k: string, v: boolean) =>
     onChange((s) => ({ ...s, islandTypes: { ...s.islandTypes, [k]: v } })), [onChange]);
-  const onToggleAllIslandTypes = useCallback((v: boolean) =>
-    onChange((s) => ({ ...s, islandTypes: setAll(islandTypeItems, v) })), [onChange, islandTypeItems]);
+  const onToggleAllIslandTypes = useCallback((v: boolean, keys: string[]) =>
+    onChange((s) => ({ ...s, islandTypes: setAll(islandTypeItems, v, s.islandTypes, keys) })), [onChange, islandTypeItems]);
 
   const onChangeIslandName = useCallback((k: string, v: boolean) =>
     onChange((s) => ({ ...s, islandNames: { ...s.islandNames, [k]: v } })), [onChange]);
-  const onToggleAllIslandNames = useCallback((v: boolean) =>
-    onChange((s) => ({ ...s, islandNames: setAll(islandNameItems, v) })), [onChange, islandNameItems]);
+  const onToggleAllIslandNames = useCallback((v: boolean, keys: string[]) =>
+    onChange((s) => ({ ...s, islandNames: setAll(islandNameItems, v, s.islandNames, keys) })), [onChange, islandNameItems]);
+
+  const toggleIslandTypeCascade = useCallback((key: string) => {
+    onChange((s) => ({
+      ...s,
+      islandTypeCascade: { ...s.islandTypeCascade, [key]: s.islandTypeCascade[key as keyof typeof s.islandTypeCascade] === false },
+    }));
+  }, [onChange]);
+
+  const toggleIslandNameCascade = useCallback((key: string) => {
+    onChange((s) => ({
+      ...s,
+      islandNameCascade: { ...s.islandNameCascade, [key]: s.islandNameCascade[key] === false },
+    }));
+  }, [onChange]);
+
+  const renderIslandTypeAction = useCallback((item: CheckItem) => {
+    const on = settings.islandTypeCascade[item.key as keyof typeof settings.islandTypeCascade] !== false;
+    return (
+      <Tooltip title={on ? 'Скрыть вместе с вершинами' : 'Показать вершины'}>
+        <button
+          type="button"
+          className={`${styles.schemaBtn} ${!on ? styles.schemaBtnOff : ''}`}
+          onClick={(e) => { e.stopPropagation(); toggleIslandTypeCascade(item.key); }}
+        >
+          {on ? <IconSchema size={15} /> : <IconSchemaOff size={15} />}
+        </button>
+      </Tooltip>
+    );
+  }, [settings.islandTypeCascade, toggleIslandTypeCascade]);
+
+  const renderIslandNameAction = useCallback((item: CheckItem) => {
+    const on = settings.islandNameCascade[item.key] !== false;
+    return (
+      <Tooltip title={on ? 'Скрыть вместе с вершинами' : 'Показать вершины'}>
+        <button
+          type="button"
+          className={`${styles.schemaBtn} ${!on ? styles.schemaBtnOff : ''}`}
+          onClick={(e) => { e.stopPropagation(); toggleIslandNameCascade(item.key); }}
+        >
+          {on ? <IconSchema size={15} /> : <IconSchemaOff size={15} />}
+        </button>
+      </Tooltip>
+    );
+  }, [settings.islandNameCascade, toggleIslandNameCascade]);
 
   const onToggleOnlySelected = useCallback((v: boolean) => patch({ onlySelectedAndNeighbors: v }), [patch]);
   const onToggleHideIslands = useCallback((v: boolean) => patch({ hideAllIslands: v }), [patch]);
@@ -132,9 +189,11 @@ const SettingsPanelBody = memo(function SettingsPanelBody(props: SettingsPanelPr
         <IconGripVertical size={15} className={styles.grip} />
         <span style={{ flex: 1 }}>Настройки отображения</span>
         {panelActions?.controls}
-        <button type="button" className={styles.closeBtn} onClick={props.onClose} title="Закрыть" data-no-drag>
-          <IconX size={14} />
-        </button>
+        <Tooltip title="Закрыть">
+          <button type="button" className={styles.closeBtn} onClick={props.onClose} data-no-drag>
+            <IconX size={14} />
+          </button>
+        </Tooltip>
       </div>
 
       <div className={styles.toggles}>
@@ -156,6 +215,7 @@ const SettingsPanelBody = memo(function SettingsPanelBody(props: SettingsPanelPr
           state={settings.objectTypes}
           onChange={onChangeObjectType}
           onToggleAll={onToggleAllObjectTypes}
+          searchable
         />
       </Section>
 
@@ -165,6 +225,7 @@ const SettingsPanelBody = memo(function SettingsPanelBody(props: SettingsPanelPr
           state={settings.nodeNames}
           onChange={onChangeNodeName}
           onToggleAll={onToggleAllNodeNames}
+          searchable
         />
       </Section>
 
@@ -174,6 +235,7 @@ const SettingsPanelBody = memo(function SettingsPanelBody(props: SettingsPanelPr
           state={settings.edgeTypes}
           onChange={onChangeEdgeType}
           onToggleAll={onToggleAllEdgeTypes}
+          searchable
         />
       </Section>
 
@@ -183,6 +245,8 @@ const SettingsPanelBody = memo(function SettingsPanelBody(props: SettingsPanelPr
           state={settings.islandTypes}
           onChange={onChangeIslandType}
           onToggleAll={onToggleAllIslandTypes}
+          searchable
+          renderItemAction={renderIslandTypeAction}
         />
       </Section>
 
@@ -192,19 +256,27 @@ const SettingsPanelBody = memo(function SettingsPanelBody(props: SettingsPanelPr
           state={settings.islandNames}
           onChange={onChangeIslandName}
           onToggleAll={onToggleAllIslandNames}
+          searchable
+          renderItemAction={renderIslandNameAction}
         />
       </Section>
       </div>
 
       <div className={styles.footer}>
-        <button type="button" className={`${styles.btn} ${styles.btnReset}`} onClick={props.onReset} title="Сбросить все фильтры">
-          Сбросить
-        </button>
-        <button type="button" className={styles.btn} onClick={handleExport} title="Экспорт фильтров">
-          <IconDownload size={15} /> Экспорт
-        </button>
-        <button type="button" className={styles.btn} onClick={handleImportClick} title="Импорт фильтров">
-          <IconUpload size={15} /> Импорт
+        <div className={styles.footerActions}>
+          <Tooltip title="Экспорт фильтров">
+            <button type="button" className={styles.btn} onClick={handleExport}>
+              <IconDownload size={15} /> Экспорт
+            </button>
+          </Tooltip>
+          <Tooltip title="Импорт фильтров">
+            <button type="button" className={styles.btn} onClick={handleImportClick}>
+              <IconUpload size={15} /> Импорт
+            </button>
+          </Tooltip>
+        </div>
+        <button type="button" className={styles.resetLink} onClick={props.onReset}>
+          <IconRestore size={15} /> Сбросить мои изменения
         </button>
         <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
       </div>

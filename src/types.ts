@@ -24,6 +24,10 @@ export interface CommonAdditionalParams {
   strokeWidth?: number;
   curvature?: number;
   animated?: boolean;
+  /** Градиент на stroke (по умолчанию — сплошной цвет из Figma) */
+  edgeGradient?: boolean;
+  /** Фон карточки в состоянии selected (если не задан — лёгкий тинт от color) */
+  selectedBackground?: string;
   links?: UsefulLink[];
   [key: string]: unknown;
 }
@@ -69,6 +73,17 @@ export interface IslandDef {
   additionalParams: CommonAdditionalParams;
 }
 
+export interface GraphData {
+  nodes: GraphNodeDef[];
+  edges: GraphEdgeDef[];
+  islands: IslandDef[];
+}
+
+/** GraphData + координаты узлов после ELK (файл для S3) */
+export interface GraphLayoutBundle extends GraphData {
+  positions: Record<string, { x: number; y: number }>;
+}
+
 export type SelectedEntity =
   | { kind: 'node'; data: GraphNodeDef }
   | { kind: 'edge'; data: GraphEdgeDef }
@@ -83,4 +98,8 @@ export interface DisplaySettings {
   islandTypes: Record<IslandType, boolean>;
   nodeNames: Record<string, boolean>;
   islandNames: Record<string, boolean>;
+  islandTypeCascade: Record<IslandType, boolean>;
+  islandNameCascade: Record<string, boolean>;
 }
+
+export type InteractionMode = 'hand' | 'cursor';

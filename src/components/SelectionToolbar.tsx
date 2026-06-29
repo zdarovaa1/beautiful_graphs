@@ -3,10 +3,12 @@ import {
   type CSSProperties, type ReactNode,
 } from 'react';
 import { useReactFlow, useStore } from '@xyflow/react';
+import type { Node } from '@xyflow/react';
 import {
   IconCamera, IconLayoutAlignMiddle, IconLayoutAlignCenter, IconTopologyStar3,
 } from '@tabler/icons-react';
 import { ScreenshotPreviewModal } from './ScreenshotPreviewModal';
+import { Tooltip } from './Tooltip';
 import styles from './SelectionToolbar.module.css';
 
 const GAP = 10;
@@ -59,15 +61,16 @@ const ToolBtn = memo(function ToolBtn({
   className?: string;
 }) {
   return (
-    <button
-      type="button"
-      className={`${styles.btn} ${className ?? ''}`}
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-    >
-      {children}
-    </button>
+    <Tooltip title={title}>
+      <button
+        type="button"
+        className={`${styles.btn} ${className ?? ''}`}
+        onClick={onClick}
+        disabled={disabled}
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 });
 
@@ -75,9 +78,8 @@ export const SelectionToolbar = memo(function SelectionToolbar({
   selectedIds, isEditMode, onAlignH, onAlignV, onElkLayout, layoutTick, onLayoutBump,
 }: SelectionToolbarProps) {
   const { getNodes, getEdges } = useReactFlow();
-  const transform = useStore((s) => s.transform);
   const graphSelectedCount = useStore(
-    (s: { nodeLookup: Map<string, import('@xyflow/react').Node> }) =>
+    (s: { nodeLookup: Map<string, Node> }) =>
       [...s.nodeLookup.values()].filter((n) => n.selected && n.type === 'graph').length,
   );
   const barRef = useRef<HTMLDivElement>(null);
@@ -149,7 +151,9 @@ export const SelectionToolbar = memo(function SelectionToolbar({
 
   useLayoutEffect(() => {
     updatePosition();
-  }, [updatePosition, transform, layoutTick, selectedIds]);
+    const id = requestAnimationFrame(updatePosition);
+    return () => cancelAnimationFrame(id);
+  }, [updatePosition, layoutTick, selectedIds]);
 
   const barStyle = useMemo((): CSSProperties | undefined => (
     pos ? { left: pos.left, top: pos.top } : undefined
