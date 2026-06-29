@@ -11,8 +11,12 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .dialog {
@@ -77,7 +81,11 @@
     linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
     linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
   background-size: 16px 16px;
-  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0px;
 }
 
 .previewWrapTransparent :global(.react-flow__pane),
@@ -85,11 +93,9 @@
   background: transparent !important;
 }
 
-/* xyflow #2118: рёбра не обрезать внутри SVG; рамку .previewWrap клипаем сами */
 .previewWrap :global(.react-flow .react-flow__edges svg) {
   overflow: visible !important;
 }
-
 
 .flow {
   width: 100%;

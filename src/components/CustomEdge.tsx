@@ -1,64 +1,56 @@
-import { memo, useContext, useMemo } from 'react';
-import {
-  BaseEdge,
-  EdgeLabelRenderer,
-  type EdgeProps,
-} from '@xyflow/react';
+import { memo, useContext, useMemo } from 'react'
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from '@xyflow/react'
 import {
   DEFAULT_EDGE_CURVATURE,
   DEFAULT_EDGE_WIDTH,
   DEFAULT_EDGE_WIDTH_SELECTED,
   FALLBACK_EDGE,
   edgeTypeColors,
-} from '../theme';
-import { edgeDefById } from '../utils/graphRegistry';
-import type { EdgeDataRef } from '../utils/graphRegistry';
-import { computeEdgePathWithLabel } from '../utils/edgePath';
-import { ZoomTierContext } from '../utils/zoomTier';
-import styles from './CustomEdge.module.css';
+} from '../theme'
+import { edgeDefById } from '../utils/graphRegistry'
+import type { EdgeDataRef } from '../utils/graphRegistry'
+import { computeEdgePathWithLabel } from '../utils/edgePath'
+import { ZoomTierContext } from '../utils/zoomTier'
+import styles from './CustomEdge.module.css'
 
 function edgeColorKey(color: string): string {
-  return color.replace(/[^a-z0-9]/gi, '');
+  return color.replace(/[^a-z0-9]/gi, '')
 }
 
 function CustomEdgeInner(props: EdgeProps) {
-  const {
-    id, sourceX, sourceY, targetX, targetY,
-    sourcePosition, targetPosition,
-    selected, data,
-  } = props;
+  const { id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected, data } = props
 
-  const edgeData = data as EdgeDataRef | undefined;
-  const def = edgeData ? edgeDefById.get(edgeData.defId) : undefined;
-  const showLabelSetting = edgeData?.showLabel ?? true;
-  const zoomTier = useContext(ZoomTierContext);
+  const edgeData = data as EdgeDataRef | undefined
+  const def = edgeData ? edgeDefById.get(edgeData.defId) : undefined
+  const showLabelSetting = edgeData?.showLabel ?? true
+  const zoomTier = useContext(ZoomTierContext)
 
   const appearance = useMemo(() => {
-    const params = def?.additionalParams;
-    const color = params?.color ?? (def ? edgeTypeColors[def.type] : undefined) ?? FALLBACK_EDGE;
+    const params = def?.additionalParams
+    const color = params?.color ?? (def ? edgeTypeColors[def.type] : undefined) ?? FALLBACK_EDGE
     return {
       color,
-      strokeW: selected ? DEFAULT_EDGE_WIDTH_SELECTED : params?.strokeWidth ?? DEFAULT_EDGE_WIDTH,
+      strokeW: selected ? DEFAULT_EDGE_WIDTH_SELECTED : (params?.strokeWidth ?? DEFAULT_EDGE_WIDTH),
       curvature: params?.curvature ?? DEFAULT_EDGE_CURVATURE,
       useGradient: params?.edgeGradient === true,
       markerId: `arrow-${edgeColorKey(color)}`,
       useAnimation: params?.animated ?? true,
-    };
-  }, [def, selected]);
+    }
+  }, [def, selected])
+
+  const { color, strokeW, curvature, useGradient, markerId, useAnimation } = appearance
+
+  const useRichStyle = zoomTier >= 2
+  const showLabel = useRichStyle && showLabelSetting && !!def
 
   const {
-    color, strokeW, curvature, useGradient, markerId, useAnimation,
-  } = appearance;
-
-  const useRichStyle = zoomTier >= 2;
-  const showLabel = useRichStyle && showLabelSetting && !!def;
-
-  const { path: edgePath, labelX, labelY } = useMemo(
-    () => computeEdgePathWithLabel(
-      sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, curvature,
-    ),
+    path: edgePath,
+    labelX,
+    labelY,
+  } = useMemo(
+    () => computeEdgePathWithLabel(sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, curvature),
     [sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, curvature],
-  );
+  )
 
   if (!useRichStyle) {
     return (
@@ -71,30 +63,46 @@ function CustomEdgeInner(props: EdgeProps) {
           strokeWidth: strokeW,
         }}
       />
-    );
+    )
   }
 
-  const gid = `grad-${id}`;
-  const mid = `arrow-edge-${id}`;
+  const gid = `grad-${id}`
+  const mid = `arrow-edge-${id}`
 
   return (
     <>
       {useGradient && (
         <defs>
-          <linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
-            <stop offset="0%" stopColor={color} />
-            <stop offset="100%" stopColor={color} />
+          <linearGradient id={gid} gradientUnits='userSpaceOnUse' x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+            <stop offset='0%' stopColor={color} />
+            <stop offset='100%' stopColor={color} />
           </linearGradient>
-          <marker id={mid} markerWidth="14" markerHeight="14" viewBox="0 0 14 14" refX="10" refY="7" orient="auto-start-reverse">
-            <path d="M2,2 L12,7 L2,12 Z" fill={color} />
+          <marker
+            id={mid}
+            markerWidth='14'
+            markerHeight='14'
+            viewBox='0 0 14 14'
+            refX='10'
+            refY='7'
+            orient='auto-start-reverse'
+          >
+            <path d='M2,2 L12,7 L2,12 Z' fill={color} />
           </marker>
         </defs>
       )}
 
       {!useGradient && (
         <defs>
-          <marker id={mid} markerWidth="14" markerHeight="14" viewBox="0 0 14 14" refX="10" refY="7" orient="auto-start-reverse">
-            <path d="M2,2 L12,7 L2,12 Z" fill={color} />
+          <marker
+            id={mid}
+            markerWidth='14'
+            markerHeight='14'
+            viewBox='0 0 14 14'
+            refX='10'
+            refY='7'
+            orient='auto-start-reverse'
+          >
+            <path d='M2,2 L12,7 L2,12 Z' fill={color} />
           </marker>
         </defs>
       )}
@@ -128,21 +136,21 @@ function CustomEdgeInner(props: EdgeProps) {
         </EdgeLabelRenderer>
       )}
     </>
-  );
+  )
 }
 
 function edgePropsEqual(prev: EdgeProps, next: EdgeProps): boolean {
   return (
-    prev.id === next.id
-    && prev.selected === next.selected
-    && prev.data === next.data
-    && prev.sourceX === next.sourceX
-    && prev.sourceY === next.sourceY
-    && prev.targetX === next.targetX
-    && prev.targetY === next.targetY
-    && prev.sourcePosition === next.sourcePosition
-    && prev.targetPosition === next.targetPosition
-  );
+    prev.id === next.id &&
+    prev.selected === next.selected &&
+    prev.data === next.data &&
+    prev.sourceX === next.sourceX &&
+    prev.sourceY === next.sourceY &&
+    prev.targetX === next.targetX &&
+    prev.targetY === next.targetY &&
+    prev.sourcePosition === next.sourcePosition &&
+    prev.targetPosition === next.targetPosition
+  )
 }
 
-export const CustomEdge = memo(CustomEdgeInner, edgePropsEqual);
+export const CustomEdge = memo(CustomEdgeInner, edgePropsEqual)

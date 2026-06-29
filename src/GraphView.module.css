@@ -4,6 +4,13 @@
   width: 100%;
   overflow: hidden;
   isolation: isolate;
+  font-family: 'SB Sans Text', 'SB Sans Display', sans-serif;
+}
+
+.root :global(*),
+.root :global(*::before),
+.root :global(*::after) {
+  font-family: inherit;
 }
 
 .root::before {
@@ -12,7 +19,7 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, #D9ECFF 0%, #E3FFEB 100%);
+  background: linear-gradient(180deg, #d9ecff 0%, #e3ffeb 100%);
 }
 
 .canvasHost {
@@ -32,13 +39,10 @@
   display: none;
 }
 
-/* фон острова клико-прозрачный → перекрытый снизу остров можно нажать
-   за его шапку/бейдж, а по пустой заливке проходит pan/клик на нижние слои */
 .root :global(.react-flow__node-island) {
   pointer-events: none;
 }
 
-/* ── overlay пока ELK считает компоновку ─────────────────────────────────── */
 .layoutOverlay {
   position: absolute;
   inset: 0;
@@ -62,4 +66,8 @@
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

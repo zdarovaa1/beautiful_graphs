@@ -15,7 +15,7 @@
 }
 .search:focus {
   border-color: #93b4f5;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 .row {
   display: flex;

@@ -77,7 +77,10 @@
   background: #fff;
   color: #3b6fd4;
   box-shadow: 0 3px 8px rgba(30, 58, 95, 0.1);
-  transition: background 0.15s, color 0.15s, transform 0.1s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    transform 0.1s;
 }
 .btn:hover {
   background: #eef4ff;
@@ -211,5 +214,7 @@
   animation: toolbarSpin 0.8s linear infinite;
 }
 @keyframes toolbarSpin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }

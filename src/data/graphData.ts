@@ -1,4 +1,4 @@
-import type { GraphEdgeDef, GraphNodeDef, IslandDef } from '../types';
+import type { GraphEdgeDef, GraphNodeDef, IslandDef } from '../types'
 
 /**
  * ЕДИНОЕ МЕСТО РЕДАКТИРОВАНИЯ ГРАФА.
@@ -29,7 +29,7 @@ export const islands: IslandDef[] = [
     additionalParams: { color: '#22c55e' },
     attributes: [{ name: 'Окружение', value: 'PROD' }],
   },
-];
+]
 
 // ── Узлы (графы) ────────────────────────────────────────────────────────────
 export const nodes: GraphNodeDef[] = [
@@ -37,7 +37,8 @@ export const nodes: GraphNodeDef[] = [
     id: 'meta',
     title: 'МЕТА',
     shortDescription: 'Корневая АС метаданных',
-    description: 'Корневая АС, описывающая метаданные инфоактивов. Является центральным реестром всех объектов платформы.',
+    description:
+      'Корневая АС, описывающая метаданные инфоактивов. Является центральным реестром всех объектов платформы.',
     type: 'AC',
     islandIds: ['ord'],
     additionalParams: {
@@ -129,7 +130,7 @@ export const nodes: GraphNodeDef[] = [
     additionalParams: { color: '#06b6d4' },
     attributes: [{ name: 'Имя атрибута', value: 'Значение атрибута' }],
   },
-];
+]
 
 // ── Связи (стрелки) ──────────────────────────────────────────────────────────
 export const edges: GraphEdgeDef[] = [
@@ -213,4 +214,4 @@ export const edges: GraphEdgeDef[] = [
     additionalParams: { color: '#06b6d4' },
     attributes: [],
   },
-];
+]

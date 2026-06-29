@@ -5,11 +5,6 @@
   border: 1.5px dashed var(--island-border, rgba(91, 141, 239, 0.4));
   border-radius: 16px;
   background: var(--island-bg, rgba(91, 141, 239, 0.08));
-  /* backdrop-filter убран: был главным убийцей производительности —
-     браузер сэмплировал и блюрил пиксели за каждым из 60+ больших островов
-     на каждый рендер канваса. */
-  /* contain: paint изолирует repaint острова в его bounds — безопасно,
-     т.к. обычные ноды НЕ являются DOM-детьми острова (они сиблинги). */
   contain: layout style paint;
   transition: box-shadow 0.15s;
 }
