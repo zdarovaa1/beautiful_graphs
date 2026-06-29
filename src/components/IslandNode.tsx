@@ -1,31 +1,33 @@
-import { memo, type MouseEvent } from 'react';
+import { memo, useCallback, useMemo, type MouseEvent } from 'react';
 import { type NodeProps } from '@xyflow/react';
 import type { CSSProperties } from 'react';
-import { defaultIslandBg, defaultIslandBorder, defaultBadgeBg, resolveColor } from '../utils/color';
 import { FALLBACK_ISLAND, islandTypeColors } from '../theme';
 import { islandDefById } from '../utils/graphRegistry';
 import type { IslandNodeDataRef } from '../utils/graphRegistry';
 import styles from './IslandNode.module.css';
 
-const stopProp = (e: MouseEvent) => e.stopPropagation();
-
 function IslandNodeInner({ data, selected }: NodeProps) {
   const { defId, width, height } = data as IslandNodeDataRef;
   const def = islandDefById.get(defId);
-  if (!def) return null;
 
-  const p = def.additionalParams;
-  const color = resolveColor(p.color ?? islandTypeColors[def.type], FALLBACK_ISLAND);
-  const badge = resolveColor(p.badgeColor, color);
+  const style = useMemo((): CSSProperties | null => {
+    if (!def) return null;
+    const p = def.additionalParams;
+    const color = p.color ?? islandTypeColors[def.type] ?? FALLBACK_ISLAND;
+    const badge = p.badgeColor ?? color;
+    return {
+      width,
+      height,
+      '--island-bg': p.background ?? `${color}14`,
+      '--island-border': p.borderColor ?? `${color}66`,
+      '--badge-color': badge,
+      '--badge-bg': p.badgeBg ?? `${badge}1f`,
+    } as CSSProperties;
+  }, [def, width, height]);
 
-  const style = {
-    width,
-    height,
-    '--island-bg': p.background ?? defaultIslandBg(color),
-    '--island-border': p.borderColor ?? defaultIslandBorder(color),
-    '--badge-color': badge,
-    '--badge-bg': p.badgeBg ?? defaultBadgeBg(badge),
-  } as CSSProperties;
+  const stopProp = useCallback((e: MouseEvent) => e.stopPropagation(), []);
+
+  if (!def || !style) return null;
 
   return (
     <div

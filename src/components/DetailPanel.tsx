@@ -5,7 +5,6 @@ import {
 } from '@tabler/icons-react';
 import type { ObjectType, EdgeType, IslandType, SelectedEntity, DisplaySettings } from '../types';
 import { FALLBACK_BADGE, islandTypeColors, objectTypeColors } from '../theme';
-import { defaultDetailBadgeBg, resolveColor } from '../utils/color';
 import { getGraphEdges, getGraphIslands, getGraphNodes } from '../utils/graphRegistry';
 import { FloatingPanel, FloatingPanelActionsContext, type SnapEdge, type PanelSize } from './FloatingPanel';
 import { getInnerHeight, getInnerWidth } from '../utils/getRootSizes';
@@ -37,10 +36,10 @@ const Toggle = memo(function Toggle({
 
 function accentFor(selected: SelectedEntity): string {
   const p = selected.data.additionalParams;
-  if (p.badgeColor) return resolveColor(p.badgeColor as string, FALLBACK_BADGE);
+  if (p.badgeColor) return p.badgeColor as string;
   if (selected.kind === 'island') return islandTypeColors[selected.data.type] ?? FALLBACK_BADGE;
   if (selected.kind === 'node') return objectTypeColors[selected.data.type] ?? FALLBACK_BADGE;
-  return resolveColor(p.color as string | undefined, FALLBACK_BADGE);
+  return (p.color as string | undefined) ?? FALLBACK_BADGE;
 }
 
 /** Отступ панели от правого края root-контейнера */
@@ -250,7 +249,7 @@ const DetailPanelBody = memo(function DetailPanelBody({
         <IconGripVertical size={15} className={styles.grip} />
         <div className={styles.titleRow}>
           <h2 className={styles.title}>{d.title}</h2>
-          <span className={styles.badge} style={{ color: accent, background: defaultDetailBadgeBg(accent) }}>
+          <span className={styles.badge} style={{ color: accent, background: `${accent}1f` }}>
             {d.type}
           </span>
           <div className={styles.titleActions}>

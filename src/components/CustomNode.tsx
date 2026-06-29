@@ -1,12 +1,6 @@
-import { memo, useContext } from 'react';
+import { memo, useContext, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { CSSProperties } from 'react';
-import {
-  defaultBadgeBg,
-  nodeSelectionColors,
-  NODE_SURFACE,
-  resolveColor,
-} from '../utils/color';
 import { FALLBACK_BADGE, FALLBACK_STRIP, getNodeSize, objectTypeColors } from '../theme';
 import { nodeDefById } from '../utils/graphRegistry';
 import type { GraphNodeDataRef } from '../utils/graphRegistry';
@@ -36,33 +30,35 @@ const HandleLayer = memo(function HandleLayer() {
 });
 
 function CustomNodeInner({ data, selected }: NodeProps) {
+  const zoomTier = useContext(ZoomTierContext);
   const { defId } = data as GraphNodeDataRef;
   const def = nodeDefById.get(defId);
-  if (!def) return null;
 
-  const p = def.additionalParams;
-  const { width, height } = getNodeSize(p);
-  const strip = resolveColor(p.color, FALLBACK_STRIP);
-  const badge = resolveColor(p.badgeColor ?? objectTypeColors[def.type], FALLBACK_BADGE);
-  const selection = nodeSelectionColors(strip, {
-    borderColor: p.borderColor,
-    selectedBackground: p.selectedBackground as string | undefined,
-  });
-  const zoomTier = useContext(ZoomTierContext);
+  const layout = useMemo(() => {
+    if (!def) return null;
+    const p = def.additionalParams;
+    const { width, height } = getNodeSize(p);
+    const strip = p.color ?? FALLBACK_STRIP;
+    const badge = p.badgeColor ?? objectTypeColors[def.type] ?? FALLBACK_BADGE;
+    const style = {
+      width,
+      height,
+      '--node-strip': strip,
+      '--badge-color': badge,
+      '--badge-bg': p.badgeBg ?? `${badge}1a`,
+      '--node-bg': p.background ?? '#fff',
+      '--node-border': p.borderColor,
+      '--title-color': p.titleColor,
+      '--node-select-border': p.borderColor ?? `${strip}8c`,
+      '--node-select-bg': (p.selectedBackground as string | undefined) ?? `${strip}1f`,
+      '--node-select-ring': `${strip}4d`,
+    } as CSSProperties;
+    return { width, height, strip, style };
+  }, [def]);
 
-  const style = {
-    width,
-    height,
-    '--node-strip': strip,
-    '--badge-color': badge,
-    '--badge-bg': p.badgeBg ?? defaultBadgeBg(badge),
-    '--node-bg': p.background ?? NODE_SURFACE,
-    '--node-border': p.borderColor,
-    '--title-color': p.titleColor,
-    '--node-select-border': selection.border,
-    '--node-select-bg': selection.background,
-    '--node-select-ring': selection.ring,
-  } as CSSProperties;
+  if (!def || !layout) return null;
+
+  const { width, height, strip, style } = layout;
 
   if (zoomTier === 0) {
     return (

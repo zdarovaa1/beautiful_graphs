@@ -4,7 +4,6 @@ import {
   EdgeLabelRenderer,
   type EdgeProps,
 } from '@xyflow/react';
-import { resolveColor } from '../utils/color';
 import {
   DEFAULT_EDGE_CURVATURE,
   DEFAULT_EDGE_WIDTH,
@@ -34,16 +33,24 @@ function CustomEdgeInner(props: EdgeProps) {
   const showLabelSetting = edgeData?.showLabel ?? true;
   const zoomTier = useContext(ZoomTierContext);
 
-  const p = def?.additionalParams;
-  const color = resolveColor(p?.color ?? (def ? edgeTypeColors[def.type] : undefined), FALLBACK_EDGE);
-  const strokeW = (selected ? DEFAULT_EDGE_WIDTH_SELECTED : p?.strokeWidth ?? DEFAULT_EDGE_WIDTH) as number;
-  const curvature = p?.curvature ?? DEFAULT_EDGE_CURVATURE;
-  const useGradient = p?.edgeGradient === true;
-  const colorKey = edgeColorKey(color);
-  const markerId = `arrow-${colorKey}`;
+  const appearance = useMemo(() => {
+    const params = def?.additionalParams;
+    const color = params?.color ?? (def ? edgeTypeColors[def.type] : undefined) ?? FALLBACK_EDGE;
+    return {
+      color,
+      strokeW: selected ? DEFAULT_EDGE_WIDTH_SELECTED : params?.strokeWidth ?? DEFAULT_EDGE_WIDTH,
+      curvature: params?.curvature ?? DEFAULT_EDGE_CURVATURE,
+      useGradient: params?.edgeGradient === true,
+      markerId: `arrow-${edgeColorKey(color)}`,
+      useAnimation: params?.animated ?? true,
+    };
+  }, [def, selected]);
+
+  const {
+    color, strokeW, curvature, useGradient, markerId, useAnimation,
+  } = appearance;
 
   const useRichStyle = zoomTier >= 2;
-  const useAnimation = useRichStyle && (p?.animated ?? true);
   const showLabel = useRichStyle && showLabelSetting && !!def;
 
   const { path: edgePath, labelX, labelY } = useMemo(
@@ -102,7 +109,7 @@ function CustomEdgeInner(props: EdgeProps) {
           filter: selected ? `drop-shadow(0 0 5px ${color})` : undefined,
         }}
       />
-      {useAnimation && (
+      {useAnimation && useRichStyle && (
         <path d={edgePath} className={styles.flow} data-screenshot-decor style={{ stroke: color }} />
       )}
 

@@ -111,10 +111,6 @@ export function getEdgeCurvature(edge: Edge): number {
   return def?.additionalParams?.curvature ?? DEFAULT_EDGE_CURVATURE;
 }
 
-import { colorWithAlpha } from './color';
-
-export { colorWithAlpha };
-
 type FlowStore = {
   getState: () => {
     nodeLookup: Map<string, unknown>;

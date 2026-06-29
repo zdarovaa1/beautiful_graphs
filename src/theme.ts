@@ -4,11 +4,6 @@ import type { CommonAdditionalParams, EdgeType, IslandType, ObjectType } from '.
  * ЕДИНОЕ МЕСТО НАСТРОЙКИ ВНЕШНЕГО ВИДА.
  * Тут лежат дефолтные цвета/размеры. Любое значение можно переопределить
  * точечно через `additionalParams` конкретного узла / острова / связи.
- *
- * Цвета из Figma:
- * — сплошной #RRGGBB → в `color`, `background`, `borderColor`, `badgeColor`
- * — с прозрачностью #RRGGBBAA или rgba() → в тот же ключ как в Inspect
- * — для полупрозрачных заливок на белом/холсте см. utils/color.ts
  */
 
 /** Цвет бейджа типа объекта (узел). */
