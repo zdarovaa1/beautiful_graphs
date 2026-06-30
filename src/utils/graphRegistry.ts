@@ -1,13 +1,16 @@
 import { edges as defaultEdges, islands as defaultIslands, nodes as defaultNodes } from '../data/graphData'
 import type { GraphEdgeDef, GraphNodeDef, GraphLayoutBundle, IslandDef } from '../types'
+import { normalizeGraphData, normalizeGraphLayoutBundle } from './normalizeGraphColors'
 
 export const nodeDefById = new Map<string, GraphNodeDef>()
 export const islandDefById = new Map<string, IslandDef>()
 export const edgeDefById = new Map<string, GraphEdgeDef>()
 
-let graphNodes: GraphNodeDef[] = defaultNodes
-let graphEdges: GraphEdgeDef[] = defaultEdges
-let graphIslands: IslandDef[] = defaultIslands
+const defaults = normalizeGraphData({ nodes: defaultNodes, edges: defaultEdges, islands: defaultIslands })
+
+let graphNodes: GraphNodeDef[] = defaults.nodes
+let graphEdges: GraphEdgeDef[] = defaults.edges
+let graphIslands: IslandDef[] = defaults.islands
 
 const graphNodeDataCache = new Map<string, GraphNodeDataRef>()
 const islandDataCache = new Map<string, IslandNodeDataRef>()
@@ -29,11 +32,12 @@ function rebuildLookupMaps() {
   clearDataCaches()
 }
 
-/** Применяет bundle из S3 / ELK-подготовки — обновляет lookup для CustomNode, IslandNode, DetailPanel */
+/** Применяет bundle — обновляет lookup для CustomNode, IslandNode, DetailPanel */
 export function applyGraphLayoutBundle(bundle: GraphLayoutBundle): void {
-  graphNodes = bundle.nodes
-  graphEdges = bundle.edges
-  graphIslands = bundle.islands
+  const normalized = normalizeGraphLayoutBundle(bundle)
+  graphNodes = normalized.nodes
+  graphEdges = normalized.edges
+  graphIslands = normalized.islands
   rebuildLookupMaps()
 }
 

@@ -1,7 +1,8 @@
 import { getBezierPath, Position, type Edge } from '@xyflow/react'
 import { getEdgePosition } from '@xyflow/system'
 import type { GraphEdgeDef } from '../types'
-import { DEFAULT_EDGE_CURVATURE, DEFAULT_EDGE_WIDTH, edgeTypeColors, FALLBACK_EDGE } from '../theme'
+import { DEFAULT_EDGE_CURVATURE, DEFAULT_EDGE_WIDTH, FALLBACK_EDGE } from '../theme'
+import { edgeDefById } from './graphRegistry'
 
 interface EdgeData {
   def?: GraphEdgeDef
@@ -103,9 +104,7 @@ export function computeEdgePathWithLabel(
 }
 
 export function getEdgeColor(edge: Edge): string {
-  const def = (edge.data as EdgeData | undefined)?.def
-  const p = def?.additionalParams
-  return p?.color ?? (def ? edgeTypeColors[def.type] : undefined) ?? FALLBACK_EDGE
+  return edgeDefById.get(edge.id)?.additionalParams.color ?? FALLBACK_EDGE
 }
 
 export function getEdgeStrokeWidth(edge: Edge): number {

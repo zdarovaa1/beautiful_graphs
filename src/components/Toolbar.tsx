@@ -22,7 +22,7 @@ import type { InteractionMode } from '../types'
 import type { ToolbarLayout } from '../SnapLayout'
 import { useReportToolbarLayout } from '../SnapLayout'
 import { useGraphTexts } from '../texts/GraphTextsContext'
-import { Tooltip } from './Tooltip'
+import { Tooltip } from 'antd'
 import styles from './Toolbar.module.css'
 
 type PosMap = Record<string, { x: number; y: number }>

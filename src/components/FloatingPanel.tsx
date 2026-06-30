@@ -15,7 +15,7 @@ import { usePanelStack, useRegisteredPanels, useSnapSlot, computeSnapSlots, type
 import { getInnerHeight, getInnerWidth } from '../utils/getRootSizes'
 import { getBoundingClientRect } from '../utils/getBoundingClientRect'
 import { useGraphTexts } from '../texts/GraphTextsContext'
-import { Tooltip } from './Tooltip'
+import { Tooltip } from 'antd'
 import styles from './FloatingPanel.module.css'
 
 export interface FloatingPanelActions {
@@ -109,7 +109,7 @@ function getSnapPanelStyle(
   }
 }
 
-function applySnap(snap: SnapEdge, r: Rect, maxW: number, _margin = SNAP_MARGIN): Rect {
+function applySnap(snap: SnapEdge, r: Rect, maxW: number): Rect {
   const sw = Math.min(SNAP_WIDTH, maxW)
   const sh = SNAP_HEIGHT
   switch (snap) {

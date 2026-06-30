@@ -1,7 +1,3 @@
-export type ObjectType = 'AC' | 'ФП' | 'Сервис' | 'ИР' | 'Схема' | 'Таблица ФМД'
-
-export const ALL_OBJECT_TYPES: ObjectType[] = ['AC', 'ФП', 'Сервис', 'ИР', 'Схема', 'Таблица ФМД']
-
 export interface Attribute {
   name: string
   value: string
@@ -28,6 +24,12 @@ export interface CommonAdditionalParams {
   edgeGradient?: boolean
   /** Фон карточки в состоянии selected (если не задан — лёгкий тинт от color) */
   selectedBackground?: string
+  /** Заполняется при загрузке графа */
+  selectBorder?: string
+  /** Заполняется при загрузке графа */
+  selectRing?: string
+  /** Фон meta-бейджа (12% от accent) — заполняется при загрузке графа */
+  accentBg?: string
   links?: UsefulLink[]
   [key: string]: unknown
 }
@@ -40,12 +42,10 @@ export interface GraphNodeDef {
   /** Полное описание — только в DetailPanel. */
   description: string
   attributes: Attribute[]
-  type: ObjectType
+  type: string
   additionalParams: CommonAdditionalParams
   islandIds: string[]
 }
-
-export type EdgeType = 'Связь' | 'Поток' | 'Зависимость' | 'Использует'
 
 export interface GraphEdgeDef {
   id: string
@@ -55,11 +55,9 @@ export interface GraphEdgeDef {
   shortDescription?: string
   description: string
   attributes: Attribute[]
-  type: EdgeType
+  type: string
   additionalParams: CommonAdditionalParams
 }
-
-export type IslandType = 'Домен' | 'Контур' | 'Группа'
 
 export interface IslandDef {
   id: string
@@ -69,7 +67,7 @@ export interface IslandDef {
   /** Полное описание — только в DetailPanel. */
   description: string
   attributes: Attribute[]
-  type: IslandType
+  type: string
   additionalParams: CommonAdditionalParams
 }
 
@@ -79,25 +77,27 @@ export interface GraphData {
   islands: IslandDef[]
 }
 
-/** GraphData + координаты узлов после ELK (файл для S3) */
+/** GraphData + координаты узлов после ELK */
 export interface GraphLayoutBundle extends GraphData {
   positions: Record<string, { x: number; y: number }>
 }
 
 export type SelectedEntity =
-  { kind: 'node'; data: GraphNodeDef } | { kind: 'edge'; data: GraphEdgeDef } | { kind: 'island'; data: IslandDef }
+  | { kind: 'node'; data: GraphNodeDef }
+  | { kind: 'edge'; data: GraphEdgeDef }
+  | { kind: 'island'; data: IslandDef }
 
 export interface DisplaySettings {
   onlySelectedAndNeighbors: boolean
   hideAllIslands: boolean
   showEdgeLabels: boolean
-  objectTypes: Record<ObjectType, boolean>
-  edgeTypes: Record<EdgeType, boolean>
-  islandTypes: Record<IslandType, boolean>
+  objectTypes: Record<string, boolean>
+  edgeTypes: Record<string, boolean>
+  islandTypes: Record<string, boolean>
   nodeNames: Record<string, boolean>
   edgeNames: Record<string, boolean>
   islandNames: Record<string, boolean>
-  islandTypeCascade: Record<IslandType, boolean>
+  islandTypeCascade: Record<string, boolean>
   islandNameCascade: Record<string, boolean>
 }
 

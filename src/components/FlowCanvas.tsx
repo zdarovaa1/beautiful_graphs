@@ -64,6 +64,7 @@ const selectSelectedGraphIds = (s: { nodeLookup: Map<string, Node> }) =>
 interface FlowCanvasProps {
   derivedNodes: Node[]
   edges: Edge[]
+  graphId: string
   isEditMode: boolean
   interactionMode: InteractionMode
   onNodeClick: NodeMouseHandler
@@ -81,6 +82,7 @@ interface FlowCanvasProps {
 export const FlowCanvas = memo(function FlowCanvas({
   derivedNodes,
   edges,
+  graphId,
   isEditMode,
   interactionMode,
   onNodeClick,
@@ -171,7 +173,7 @@ export const FlowCanvas = memo(function FlowCanvas({
           color={BG_DOT_COLOR}
           bgColor='transparent'
         />
-        <SharedEdgeDefs />
+        <SharedEdgeDefs graphId={graphId} />
         <FocusEntityBridge onReady={onFocusReady} />
         <SelectEntityBridge onReady={onSelectReady} />
         {showMiniMap && (

@@ -17,7 +17,7 @@ import { CustomEdge } from './CustomEdge'
 import { IslandNode } from './IslandNode'
 import { ZoomTierContext } from '../utils/zoomTier'
 import { useGraphTexts } from '../texts/GraphTextsContext'
-import { Tooltip } from './Tooltip'
+import { Tooltip } from 'antd'
 import styles from './ScreenshotPreviewModal.module.css'
 import { GRAPH_ROOT_ID } from '../utils/getRootSizes'
 
@@ -209,6 +209,8 @@ export const ScreenshotPreviewModal = memo(function ScreenshotPreviewModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const portalRoot = document.getElementById(GRAPH_ROOT_ID) ?? document.body
+
   return createPortal(
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
@@ -267,6 +269,6 @@ export const ScreenshotPreviewModal = memo(function ScreenshotPreviewModal({
         </footer>
       </div>
     </div>,
-    document.getElementById(GRAPH_ROOT_ID),
+    portalRoot,
   )
 })

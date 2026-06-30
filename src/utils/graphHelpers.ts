@@ -5,12 +5,8 @@ import type {
   GraphEdgeDef,
   IslandDef,
   DisplaySettings,
-  ObjectType,
-  EdgeType,
-  IslandType,
   SelectedEntity,
 } from '../types'
-import { ALL_OBJECT_TYPES } from '../types'
 import type { LaidOutNode } from '../layout/elkLayout'
 import { runElkSelectionLayout } from '../layout/elkLayout'
 import { getNodeSize } from '../theme'
@@ -31,28 +27,20 @@ export function buildInitialSettings(
   edgeDefs: GraphEdgeDef[],
   islandDefs: IslandDef[],
 ): DisplaySettings {
-  const edgeTypeMap = Object.fromEntries([...new Set(edgeDefs.map((e) => e.type))].map((t) => [t, true])) as Record<
-    EdgeType,
-    boolean
-  >
-  const islandTypeMap = Object.fromEntries([...new Set(islandDefs.map((i) => i.type))].map((t) => [t, true])) as Record<
-    IslandType,
-    boolean
-  >
+  const objectTypeMap = Object.fromEntries([...new Set(nodeDefs.map((n) => n.type))].map((t) => [t, true]))
+  const edgeTypeMap = Object.fromEntries([...new Set(edgeDefs.map((e) => e.type))].map((t) => [t, true]))
+  const islandTypeMap = Object.fromEntries([...new Set(islandDefs.map((i) => i.type))].map((t) => [t, true]))
   return {
     onlySelectedAndNeighbors: false,
     hideAllIslands: false,
     showEdgeLabels: true,
-    objectTypes: Object.fromEntries(ALL_OBJECT_TYPES.map((t) => [t, true])) as Record<ObjectType, boolean>,
+    objectTypes: objectTypeMap,
     edgeTypes: edgeTypeMap,
     islandTypes: islandTypeMap,
     nodeNames: Object.fromEntries(nodeDefs.map((n) => [n.id, true])),
     edgeNames: Object.fromEntries(edgeDefs.map((e) => [e.id, true])),
     islandNames: Object.fromEntries(islandDefs.map((i) => [i.id, true])),
-    islandTypeCascade: Object.fromEntries([...new Set(islandDefs.map((i) => i.type))].map((t) => [t, true])) as Record<
-      IslandType,
-      boolean
-    >,
+    islandTypeCascade: Object.fromEntries([...new Set(islandDefs.map((i) => i.type))].map((t) => [t, true])),
     islandNameCascade: Object.fromEntries(islandDefs.map((i) => [i.id, true])),
   }
 }
@@ -87,8 +75,8 @@ export function computeVisibleNodeIds(
       hiddenCascadeIslands.add(id)
     }
   }
-  const hiddenCascadeTypes = new Set<IslandType>()
-  for (const type of Object.keys(settings.islandTypes) as IslandType[]) {
+  const hiddenCascadeTypes = new Set<string>()
+  for (const type of Object.keys(settings.islandTypes)) {
     if (settings.islandTypes[type] === false && settings.islandTypeCascade[type] !== false) {
       hiddenCascadeTypes.add(type)
     }

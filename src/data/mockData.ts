@@ -1,4 +1,4 @@
-import type { GraphNodeDef, GraphEdgeDef, IslandDef, ObjectType, EdgeType, IslandType } from '../types'
+import type { GraphNodeDef, GraphEdgeDef, IslandDef } from '../types'
 
 /**
  * Детерминированный генератор псевдослучайных чисел (mulberry32).
@@ -138,7 +138,7 @@ const COLORS = [
   '#64748b',
 ]
 
-const ISLAND_COLORS: Record<IslandType, string[]> = {
+const ISLAND_COLORS: Record<string, string[]> = {
   Домен: ['#5b8def', '#3b82f6', '#1d4ed8', '#2563eb', '#7c3aed'],
   Контур: ['#22c55e', '#16a34a', '#059669', '#0d9488', '#10b981'],
   Группа: ['#f59e0b', '#d97706', '#ef4444', '#dc2626', '#b45309'],
@@ -203,9 +203,9 @@ export function generateMockData(nodeCount = 3000): {
   edges: GraphEdgeDef[]
   islands: IslandDef[]
 } {
-  const objectTypes: ObjectType[] = ['AC', 'ФП', 'Сервис', 'ИР', 'Схема', 'Таблица ФМД']
-  const edgeTypes: EdgeType[] = ['Связь', 'Поток', 'Зависимость', 'Использует']
-  const islandTypes: IslandType[] = ['Домен', 'Контур', 'Группа']
+  const objectTypes = ['AC', 'ФП', 'Сервис', 'ИР', 'Схема', 'Таблица ФМД']
+  const edgeTypes = ['Связь', 'Поток', 'Зависимость', 'Использует']
+  const islandTypes = ['Домен', 'Контур', 'Группа']
 
   // ── острова ────────────────────────────────────────────────────────────────
   const ISLAND_COUNT = Math.max(10, Math.floor(nodeCount / 50))

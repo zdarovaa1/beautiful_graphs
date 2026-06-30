@@ -9,9 +9,9 @@ import type { GraphEdgeDef, GraphNodeDef, IslandDef } from '../types'
 // ── Острова ───────────────────────────────────────────────────────────────
 export const islands: IslandDef[] = [
   {
-    id: 'ord',
+    id: 'ord1',
     title: 'ОРД',
-    shortDescription: 'Организационно-распорядительные данные',
+    shortDescription: 'Организ132123ационно-распорядительные данные',
     description: 'Остров организационно-распорядительных данных. Объединяет АС и ФП, связанные с ведением НСИ.',
     type: 'Домен',
     additionalParams: { color: '#5b8def' },
@@ -40,7 +40,7 @@ export const nodes: GraphNodeDef[] = [
     description:
       'Корневая АС, описывающая метаданные инфоактивов. Является центральным реестром всех объектов платформы.',
     type: 'AC',
-    islandIds: ['ord'],
+    islandIds: ['ord1'],
     additionalParams: {
       color: '#5b8def',
       links: [
@@ -51,7 +51,7 @@ export const nodes: GraphNodeDef[] = [
     attributes: [
       { name: 'Имя атрибута', value: 'Значение атрибута' },
       { name: 'Имя атрибута', value: 'Значение атрибута' },
-      { name: 'Имя атрибута', value: 'Значение атрибута' },
+      { name: 'Имя атdasdasdрибута', value: 'Значение атрибута' },
       { name: 'Имя атрибута', value: 'Значение атрибута' },
       { name: 'Имя атрибута', value: 'Значение атрибута' },
     ],
@@ -60,9 +60,9 @@ export const nodes: GraphNodeDef[] = [
     id: 'infoassets',
     title: 'Инфоактивы',
     shortDescription: 'ФП учёта инфоактивов',
-    description: 'Функциональная подсистема учёта инфоактивов. Хранит реестр информационных активов организации.',
+    description: 'Функциоasdasdasdнальная подсистема учёта инфоактивов. Хранит реестр информационных активов организации.',
     type: 'ФП',
-    islandIds: ['ord'],
+    islandIds: ['ord1'],
     additionalParams: { color: '#8b5cf6' },
     attributes: [{ name: 'Имя атрибута', value: 'Значение атрибута' }],
   },
@@ -70,9 +70,9 @@ export const nodes: GraphNodeDef[] = [
     id: 'omd-orm',
     title: 'ОМД ORM',
     shortDescription: 'ORM-слой метаданных',
-    description: 'Сервис объектно-реляционного отображения метаданных. Обеспечивает доступ к физической модели данных.',
+    description: 'Сервис обsadsadъектно-реляционного отображения метаданных. Обеспечивает доступ к физической модели данных.',
     type: 'Сервис',
-    islandIds: ['ord', 'platform'],
+    islandIds: ['ord1', 'platform'],
     additionalParams: { color: '#22c55e' },
     attributes: [{ name: 'Порт', value: '8443' }],
   },

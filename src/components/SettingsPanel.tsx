@@ -11,10 +11,11 @@ import {
 import { IconSchema, IconSchemaOff } from '@tabler/icons-react'
 import { useGraphTexts } from '../texts/GraphTextsContext'
 import type { DisplaySettings } from '../types'
+import { PANEL_STORAGE_KEYS } from '../utils/graphStorage'
 import { CheckTree, type CheckItem } from './CheckTree'
 import { FloatingPanel, FloatingPanelActionsContext, type SnapEdge, type PanelSize } from './FloatingPanel'
 import { getInnerHeight, getInnerWidth } from '../utils/getRootSizes'
-import { Tooltip } from './Tooltip'
+import { Tooltip } from 'antd'
 import styles from './SettingsPanel.module.css'
 
 interface SettingsPanelProps {
@@ -382,7 +383,7 @@ export const SettingsPanel = memo(function SettingsPanel(props: SettingsPanelPro
   const texts = useGraphTexts()
   return (
     <FloatingPanel
-      storageKey='graph-settings-panel'
+      storageKey={PANEL_STORAGE_KEYS.settings}
       title={texts.settingsPanel.title}
       onLayout={props.onLayout}
       defaultX={DEFAULT_X()}

@@ -1,7 +1,6 @@
-import { memo } from 'react'
-import { edgeTypeColors, FALLBACK_EDGE } from '../theme'
-
-const COLORS = [...new Set([...Object.values(edgeTypeColors), FALLBACK_EDGE])]
+import { memo, useMemo } from 'react'
+import { FALLBACK_EDGE } from '../theme'
+import { getGraphEdges } from '../utils/graphRegistry'
 
 function edgeColorKey(color: string): string {
   return color.replace(/[^a-z0-9]/gi, '')
@@ -9,11 +8,19 @@ function edgeColorKey(color: string): string {
 
 const SVG_STYLE = { position: 'absolute', width: 0, height: 0, overflow: 'hidden' } as const
 
-export const SharedEdgeDefs = memo(function SharedEdgeDefs() {
+export const SharedEdgeDefs = memo(function SharedEdgeDefs({ graphId }: { graphId: string }) {
+  const colors = useMemo(() => {
+    const set = new Set<string>([FALLBACK_EDGE])
+    for (const edge of getGraphEdges()) {
+      set.add(edge.additionalParams.color ?? FALLBACK_EDGE)
+    }
+    return [...set]
+  }, [graphId])
+
   return (
     <svg aria-hidden style={SVG_STYLE}>
       <defs>
-        {COLORS.map((color) => (
+        {colors.map((color) => (
           <marker
             key={color}
             id={`arrow-${edgeColorKey(color)}`}

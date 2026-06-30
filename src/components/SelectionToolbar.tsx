@@ -14,7 +14,7 @@ import { IconCamera, IconLayoutAlignMiddle, IconLayoutAlignCenter, IconTopologyS
 import { ScreenshotPreviewModal } from './ScreenshotPreviewModal'
 import { getGraphNodes } from '../utils/graphRegistry'
 import { useGraphTexts } from '../texts/GraphTextsContext'
-import { Tooltip } from './Tooltip'
+import { Tooltip } from 'antd'
 import styles from './SelectionToolbar.module.css'
 
 const GAP = 10

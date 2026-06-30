@@ -5,7 +5,6 @@ import {
   DEFAULT_EDGE_WIDTH,
   DEFAULT_EDGE_WIDTH_SELECTED,
   FALLBACK_EDGE,
-  edgeTypeColors,
 } from '../theme'
 import { edgeDefById } from '../utils/graphRegistry'
 import type { EdgeDataRef } from '../utils/graphRegistry'
@@ -27,7 +26,7 @@ function CustomEdgeInner(props: EdgeProps) {
 
   const appearance = useMemo(() => {
     const params = def?.additionalParams
-    const color = params?.color ?? (def ? edgeTypeColors[def.type] : undefined) ?? FALLBACK_EDGE
+    const color = params?.color ?? FALLBACK_EDGE
     return {
       color,
       strokeW: selected ? DEFAULT_EDGE_WIDTH_SELECTED : (params?.strokeWidth ?? DEFAULT_EDGE_WIDTH),

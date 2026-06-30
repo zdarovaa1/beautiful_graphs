@@ -35,7 +35,7 @@ interface GraphOverlayProps {
   isFullscreen: boolean
   filterStats: FilterStats
   hasSavedPositions: boolean
-  graphEpoch: number
+  graphId: string
   settingsItems: SettingsItems
   onToggleSettings: () => void
   onFullscreen: () => void
@@ -64,7 +64,7 @@ export const GraphOverlay = memo(function GraphOverlay({
   isFullscreen,
   filterStats,
   hasSavedPositions,
-  graphEpoch,
+  graphId,
   settingsItems,
   onToggleSettings,
   onFullscreen,
@@ -124,7 +124,7 @@ export const GraphOverlay = memo(function GraphOverlay({
         <DetailPanel
           selected={selected}
           settings={settings}
-          graphEpoch={graphEpoch}
+          graphId={graphId}
           onChange={handleSettingsChange}
           onClose={onDetailClose}
           onSelectEntity={onSelectEntity}

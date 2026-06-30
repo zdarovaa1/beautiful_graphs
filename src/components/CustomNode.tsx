@@ -1,7 +1,7 @@
 import { memo, useContext, useMemo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { CSSProperties } from 'react'
-import { FALLBACK_BADGE, FALLBACK_STRIP, getNodeSize, objectTypeColors } from '../theme'
+import { getNodeSize } from '../theme'
 import { nodeDefById } from '../utils/graphRegistry'
 import type { GraphNodeDataRef } from '../utils/graphRegistry'
 import { ZoomTierContext } from '../utils/zoomTier'
@@ -37,22 +37,20 @@ function CustomNodeInner({ data, selected }: NodeProps) {
     if (!def) return null
     const p = def.additionalParams
     const { width, height } = getNodeSize(p)
-    const strip = p.color ?? FALLBACK_STRIP
-    const badge = p.badgeColor ?? objectTypeColors[def.type] ?? FALLBACK_BADGE
     const style = {
       width,
       height,
-      '--node-strip': strip,
-      '--badge-color': badge,
-      '--badge-bg': p.badgeBg ?? `${badge}1a`,
+      '--node-strip': p.color,
+      '--badge-color': p.badgeColor,
+      '--badge-bg': p.badgeBg,
       '--node-bg': p.background ?? '#fff',
       '--node-border': p.borderColor,
       '--title-color': p.titleColor,
-      '--node-select-border': p.borderColor ?? `${strip}8c`,
-      '--node-select-bg': (p.selectedBackground as string | undefined) ?? `${strip}1f`,
-      '--node-select-ring': `${strip}4d`,
+      '--node-select-border': p.selectBorder,
+      '--node-select-bg': p.selectedBackground,
+      '--node-select-ring': p.selectRing,
     } as CSSProperties
-    return { width, height, strip, style }
+    return { width, height, strip: p.color, style }
   }, [def])
 
   if (!def || !layout) return null

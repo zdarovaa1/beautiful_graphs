@@ -10,25 +10,23 @@ import {
 import type {
   GraphEdgeDef,
   GraphNodeDef,
-  ObjectType,
-  EdgeType,
-  IslandType,
   SelectedEntity,
   DisplaySettings,
 } from '../types'
-import { FALLBACK_BADGE, FALLBACK_EDGE, edgeTypeColors, islandTypeColors, objectTypeColors } from '../theme'
+import { FALLBACK_BADGE } from '../theme'
 import type { GraphTexts } from '../texts/defaultTexts'
 import { useGraphTexts } from '../texts/GraphTextsContext'
 import { getGraphEdges, getGraphIslands, getGraphNodes } from '../utils/graphRegistry'
+import { PANEL_STORAGE_KEYS } from '../utils/graphStorage'
 import { FloatingPanel, FloatingPanelActionsContext, type SnapEdge, type PanelSize } from './FloatingPanel'
 import { getInnerHeight, getInnerWidth } from '../utils/getRootSizes'
-import { Tooltip } from './Tooltip'
+import { Tooltip } from 'antd'
 import styles from './DetailPanel.module.css'
 
 interface DetailPanelProps {
   selected: SelectedEntity | null
   settings: DisplaySettings
-  graphEpoch: number
+  graphId: string
   onChange: React.Dispatch<React.SetStateAction<DisplaySettings>>
   onClose: () => void
   onSelectEntity: (entity: SelectedEntity) => void
@@ -56,10 +54,11 @@ const Toggle = memo(function Toggle({
 
 function accentFor(selected: SelectedEntity): string {
   const p = selected.data.additionalParams
-  if (p.badgeColor) return p.badgeColor as string
-  if (selected.kind === 'island') return islandTypeColors[selected.data.type] ?? FALLBACK_BADGE
-  if (selected.kind === 'node') return objectTypeColors[selected.data.type] ?? FALLBACK_BADGE
-  return (p.color as string | undefined) ?? FALLBACK_BADGE
+  return selected.kind === 'edge' ? p.color! : p.badgeColor!
+}
+
+function accentBgFor(selected: SelectedEntity): string {
+  return selected.data.additionalParams.accentBg!
 }
 
 const PANEL_RIGHT_OFFSET = 360
@@ -78,12 +77,14 @@ const ContextCard = memo(function ContextCard({
   title,
   meta,
   metaColor,
+  metaBg,
   lines,
   onClick,
 }: {
   title: string
   meta?: string
   metaColor?: string
+  metaBg?: string
   lines?: string[]
   onClick: () => void
 }) {
@@ -93,7 +94,7 @@ const ContextCard = memo(function ContextCard({
       <div className={styles.contextHead}>
         <div className={styles.contextName}>{title}</div>
         {meta && (
-          <div className={styles.contextMeta} style={{ color: badgeColor, background: `${badgeColor}1f` }}>
+          <div className={styles.contextMeta} style={{ color: badgeColor, background: metaBg ?? badgeColor }}>
             {meta}
           </div>
         )}
@@ -196,7 +197,7 @@ function entityMarkdown(selected: SelectedEntity, md: GraphTexts['detailMarkdown
 const DetailPanelBody = memo(function DetailPanelBody({
   selected,
   settings,
-  graphEpoch,
+  graphId,
   onChange,
   onClose,
   onSelectEntity,
@@ -208,6 +209,7 @@ const DetailPanelBody = memo(function DetailPanelBody({
   useEffect(() => setLinksOpen(false), [selected?.data.id])
 
   const accent = useMemo(() => (selected ? accentFor(selected) : ''), [selected])
+  const accentBg = useMemo(() => (selected ? accentBgFor(selected) : ''), [selected])
 
   const links = useMemo(
     () => (selected?.data.additionalParams.links as { label: string; url: string }[] | undefined) ?? [],
@@ -218,7 +220,7 @@ const DetailPanelBody = memo(function DetailPanelBody({
     if (selected?.kind !== 'node') return []
     const islands = getGraphIslands()
     return selected.data.islandIds.map((iid) => islands.find((is) => is.id === iid)).filter(Boolean)
-  }, [selected, graphEpoch])
+  }, [selected, graphId])
 
   const nodeNeighbors = useMemo(() => {
     if (selected?.kind !== 'node') return []
@@ -231,12 +233,12 @@ const DetailPanelBody = memo(function DetailPanelBody({
         const other = nodes.find((n) => n.id === otherId)
         return { edge: e, other }
       })
-  }, [selected, graphEpoch])
+  }, [selected, graphId])
 
   const islandMembers = useMemo(() => {
     if (selected?.kind !== 'island') return []
     return getGraphNodes().filter((n) => n.islandIds.includes(selected.data.id))
-  }, [selected, graphEpoch])
+  }, [selected, graphId])
 
   const edgeEndpoints = useMemo(() => {
     if (selected?.kind !== 'edge') return null
@@ -246,7 +248,7 @@ const DetailPanelBody = memo(function DetailPanelBody({
       source: nodes.find((n) => n.id === source),
       target: nodes.find((n) => n.id === target),
     }
-  }, [selected, graphEpoch])
+  }, [selected, graphId])
 
   const selectNode = useCallback(
     (id: string) => {
@@ -310,7 +312,7 @@ const DetailPanelBody = memo(function DetailPanelBody({
         <IconGripVertical size={15} className={styles.grip} />
         <div className={styles.titleRow}>
           <h2 className={styles.title}>{d.title}</h2>
-          <span className={styles.badge} style={{ color: accent, background: `${accent}1f` }}>
+          <span className={styles.badge} style={{ color: accent, background: accentBg }}>
             {d.type}
           </span>
           <div className={styles.titleActions}>
@@ -349,7 +351,8 @@ const DetailPanelBody = memo(function DetailPanelBody({
                         key={is.id}
                         title={is.title}
                         meta={is.type}
-                        metaColor={islandTypeColors[is.type] ?? FALLBACK_BADGE}
+                        metaColor={is.additionalParams.badgeColor}
+                        metaBg={is.additionalParams.accentBg}
                         lines={is.shortDescription ? [is.shortDescription] : undefined}
                         onClick={() => selectIsland(is.id)}
                       />
@@ -367,7 +370,8 @@ const DetailPanelBody = memo(function DetailPanelBody({
                     key={edge.id}
                     title={other?.title ?? texts.detailPanel.unknownNode}
                     meta={edge.type}
-                    metaColor={edgeTypeColors[edge.type] ?? FALLBACK_EDGE}
+                    metaColor={edge.additionalParams.color}
+                    metaBg={edge.additionalParams.accentBg}
                     lines={neighborLines(edge, other, selected.data.id, texts.detailPanel)}
                     onClick={() => other && selectNode(other.id)}
                   />
@@ -389,7 +393,8 @@ const DetailPanelBody = memo(function DetailPanelBody({
                     key={n.id}
                     title={n.title}
                     meta={n.type}
-                    metaColor={objectTypeColors[n.type] ?? FALLBACK_BADGE}
+                    metaColor={n.additionalParams.badgeColor}
+                    metaBg={n.additionalParams.accentBg}
                     lines={n.shortDescription ? [n.shortDescription] : undefined}
                     onClick={() => selectNode(n.id)}
                   />
@@ -409,7 +414,8 @@ const DetailPanelBody = memo(function DetailPanelBody({
                 <ContextCard
                   title={edgeEndpoints.source.title}
                   meta={edgeEndpoints.source.type}
-                  metaColor={objectTypeColors[edgeEndpoints.source.type] ?? FALLBACK_BADGE}
+                  metaColor={edgeEndpoints.source.additionalParams.badgeColor}
+                  metaBg={edgeEndpoints.source.additionalParams.accentBg}
                   lines={[
                     `${texts.detailPanel.source}`,
                     ...(edgeEndpoints.source.shortDescription ? [edgeEndpoints.source.shortDescription] : []),
@@ -421,7 +427,8 @@ const DetailPanelBody = memo(function DetailPanelBody({
                 <ContextCard
                   title={edgeEndpoints.target.title}
                   meta={edgeEndpoints.target.type}
-                  metaColor={objectTypeColors[edgeEndpoints.target.type] ?? FALLBACK_BADGE}
+                  metaColor={edgeEndpoints.target.additionalParams.badgeColor}
+                  metaBg={edgeEndpoints.target.additionalParams.accentBg}
                   lines={[
                     `${texts.detailPanel.target}`,
                     ...(edgeEndpoints.target.shortDescription ? [edgeEndpoints.target.shortDescription] : []),
@@ -470,8 +477,8 @@ const DetailPanelBody = memo(function DetailPanelBody({
               {texts.detailPanel.showByName}
             </Toggle>
             <Toggle
-              checked={settings.objectTypes[d.type as ObjectType] !== false}
-              onChange={(v) => setVisible({ objectTypes: { ...settings.objectTypes, [d.type as ObjectType]: v } })}
+              checked={settings.objectTypes[d.type] !== false}
+              onChange={(v) => setVisible({ objectTypes: { ...settings.objectTypes, [d.type]: v } })}
             >
               {texts.detailPanel.showByType}
             </Toggle>
@@ -486,8 +493,8 @@ const DetailPanelBody = memo(function DetailPanelBody({
               {texts.detailPanel.showByName}
             </Toggle>
             <Toggle
-              checked={settings.edgeTypes[d.type as EdgeType] !== false}
-              onChange={(v) => setVisible({ edgeTypes: { ...settings.edgeTypes, [d.type as EdgeType]: v } })}
+              checked={settings.edgeTypes[d.type] !== false}
+              onChange={(v) => setVisible({ edgeTypes: { ...settings.edgeTypes, [d.type]: v } })}
             >
               {texts.detailPanel.showByType}
             </Toggle>
@@ -502,8 +509,8 @@ const DetailPanelBody = memo(function DetailPanelBody({
               {texts.detailPanel.showByName}
             </Toggle>
             <Toggle
-              checked={settings.islandTypes[d.type as IslandType] !== false}
-              onChange={(v) => setVisible({ islandTypes: { ...settings.islandTypes, [d.type as IslandType]: v } })}
+              checked={settings.islandTypes[d.type] !== false}
+              onChange={(v) => setVisible({ islandTypes: { ...settings.islandTypes, [d.type]: v } })}
             >
               {texts.detailPanel.showByType}
             </Toggle>
@@ -530,7 +537,7 @@ export const DetailPanel = memo(function DetailPanel(props: DetailPanelProps) {
   const texts = useGraphTexts()
   return (
     <FloatingPanel
-      storageKey='graph-detail-panel'
+      storageKey={PANEL_STORAGE_KEYS.detail}
       title={texts.detailPanel.title}
       onLayout={props.onLayout}
       defaultX={DEFAULT_X()}

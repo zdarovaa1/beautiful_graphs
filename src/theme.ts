@@ -1,26 +1,4 @@
-import type { CommonAdditionalParams, EdgeType, IslandType, ObjectType } from './types'
-
-export const objectTypeColors: Record<ObjectType, string> = {
-  AC: '#3b82f6',
-  ФП: '#8b5cf6',
-  Сервис: '#0ea5e9',
-  ИР: '#ef4444',
-  Схема: '#06b6d4',
-  'Таблица ФМД': '#f59e0b',
-}
-
-export const islandTypeColors: Record<IslandType, string> = {
-  Домен: '#5b8def',
-  Контур: '#22c55e',
-  Группа: '#f59e0b',
-}
-
-export const edgeTypeColors: Record<EdgeType, string> = {
-  Связь: '#7c8db5',
-  Поток: '#22c55e',
-  Зависимость: '#f59e0b',
-  Использует: '#8b5cf6',
-}
+import type { CommonAdditionalParams } from './types'
 
 export const DEFAULT_NODE_WIDTH = 220
 export const DEFAULT_NODE_HEIGHT = 76

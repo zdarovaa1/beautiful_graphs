@@ -44,20 +44,18 @@ import {
 import { GraphTextsProvider } from './texts/GraphTextsContext'
 import type { PartialGraphTexts } from './texts/defaultTexts'
 import { CollapsedPanelsProvider } from './CollapsedPanels'
+import {
+  computeGraphId,
+  getGraphDataStorageKeys,
+  loadDisplaySettings,
+  loadNodePositions,
+  saveDisplaySettings,
+  saveNodePositions,
+  clearNodePositions,
+} from './utils/graphStorage'
 
 export type { InteractionMode } from './types'
 export type { PartialGraphTexts, GraphTexts } from './texts/defaultTexts'
-
-const STORAGE_KEY_SETTINGS = 'graph-display-settings'
-const STORAGE_KEY_POSITIONS = 'graph-node-positions'
-
-function loadPositions(): PosMap {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY_POSITIONS) || '{}') as PosMap
-  } catch {
-    return {}
-  }
-}
 
 function mergeDisplaySettings(saved: Partial<DisplaySettings> | null, defaults: DisplaySettings): DisplaySettings {
   if (!saved) return defaults
@@ -105,6 +103,7 @@ interface GraphCanvasHostProps {
     edges: [number, number]
     islands: [number, number]
   }) => void
+  graphId: string
 }
 
 const GraphCanvasHost = memo(function GraphCanvasHost({
@@ -129,6 +128,7 @@ const GraphCanvasHost = memo(function GraphCanvasHost({
   onFocusReady,
   onSelectReady,
   onFilterStats,
+  graphId,
 }: GraphCanvasHostProps) {
   const visibleNodeIds = useMemo(
     () => computeVisibleNodeIds(nodeDefs, edgeDefs, islandDefs, settings, focusNodeId),
@@ -179,6 +179,7 @@ const GraphCanvasHost = memo(function GraphCanvasHost({
     <FlowCanvas
       derivedNodes={rfNodes}
       edges={rfEdges}
+      graphId={graphId}
       isEditMode={editMode}
       interactionMode={interactionMode}
       onNodeClick={onNodeClick}
@@ -196,7 +197,11 @@ const GraphCanvasHost = memo(function GraphCanvasHost({
 })
 
 function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
-  const [graphEpoch, setGraphEpoch] = useState(0)
+  const graphId = useMemo(() => computeGraphId(graph), [graph])
+  const storageKeys = useMemo(() => getGraphDataStorageKeys(graphId), [graphId])
+  const nodePositionsKeyRef = useRef(storageKeys.nodePositions)
+  nodePositionsKeyRef.current = storageKeys.nodePositions
+
   const [positions, setPositions] = useState<Map<string, LaidOutNode> | null>(() => bundleToLayoutMap(graph))
   const [selected, setSelected] = useState<SelectedEntity | null>(null)
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null)
@@ -204,17 +209,12 @@ function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
   const [showSettings, setShowSettings] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('hand')
-  const [savedPositions, setSavedPositions] = useState<PosMap>(() => loadPositions())
+  const [savedPositions, setSavedPositions] = useState<PosMap>(() => loadNodePositions(getGraphDataStorageKeys(computeGraphId(graph)).nodePositions))
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [settings, setSettings] = useState<DisplaySettings>(() => {
     const defaults = buildInitialSettings(graph.nodes, graph.edges, graph.islands)
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_SETTINGS)
-      if (raw) return mergeDisplaySettings(JSON.parse(raw) as Partial<DisplaySettings>, defaults)
-    } catch {
-      /* ignore */
-    }
-    return defaults
+    const saved = loadDisplaySettings(getGraphDataStorageKeys(computeGraphId(graph)).displaySettings)
+    return mergeDisplaySettings(saved, defaults)
   })
   const [filterStats, setFilterStats] = useState({
     changed: false,
@@ -241,24 +241,26 @@ function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
   const toolbarPos = useToolbarPosition()
   const reportLayout = useReportLayout()
 
+  const storageKeysRef = useRef(storageKeys)
+  const prevStorageKeysRef = useRef(storageKeys)
+  storageKeysRef.current = storageKeys
+
   useEffect(() => {
+    const prev = prevStorageKeysRef.current
+    if (prev.displaySettings !== storageKeys.displaySettings) {
+      saveDisplaySettings(prev.displaySettings, settingsRef.current!)
+    }
+    prevStorageKeysRef.current = storageKeys
+
     applyGraphLayoutBundle(graph)
     setPositions(bundleToLayoutMap(graph))
 
     const defaults = buildInitialSettings(graph.nodes, graph.edges, graph.islands)
-    let savedSettings: Partial<DisplaySettings> | null = null
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_SETTINGS)
-      if (raw) savedSettings = JSON.parse(raw) as Partial<DisplaySettings>
-    } catch {
-      /* ignore */
-    }
-
-    setSettings(mergeDisplaySettings(savedSettings, defaults))
-    setGraphEpoch((n) => n + 1)
+    setSettings(mergeDisplaySettings(loadDisplaySettings(storageKeys.displaySettings), defaults))
+    setSavedPositions(loadNodePositions(storageKeys.nodePositions))
     setSelected(null)
     setFocusNodeId(null)
-  }, [graph])
+  }, [graph, storageKeys.displaySettings, storageKeys.nodePositions])
 
   useEffect(() => {
     const onChange = () => setIsFullscreen(!!document.fullscreenElement)
@@ -267,8 +269,7 @@ function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
   }, [])
 
   useEffect(() => {
-    if (!settings) return
-    localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings))
+    saveDisplaySettings(storageKeysRef.current.displaySettings, settings)
   }, [settings])
 
   useEffect(() => {
@@ -359,18 +360,18 @@ function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
       draggedNodes.forEach((n) => {
         if (n.type !== 'island') next[n.id] = { x: n.position.x, y: n.position.y }
       })
-      localStorage.setItem(STORAGE_KEY_POSITIONS, JSON.stringify(next))
+      saveNodePositions(nodePositionsKeyRef.current, next)
       return next
     })
   }, [])
 
   const onResetPositions = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY_POSITIONS)
+    clearNodePositions(nodePositionsKeyRef.current)
     setSavedPositions({})
   }, [])
 
   const onImportPositions = useCallback((pos: PosMap) => {
-    localStorage.setItem(STORAGE_KEY_POSITIONS, JSON.stringify(pos))
+    saveNodePositions(nodePositionsKeyRef.current, pos)
     setSavedPositions(pos)
   }, [])
 
@@ -476,6 +477,7 @@ function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
             onFocusReady={onFocusReady}
             onSelectReady={onSelectReady}
             onFilterStats={onFilterStats}
+            graphId={graphId}
           />
         )}
       </div>
@@ -487,7 +489,7 @@ function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
         showDetailPanel={showDetailPanel}
         settings={settings}
         selected={selected}
-        graphEpoch={graphEpoch}
+        graphId={graphId}
         editMode={editMode}
         interactionMode={interactionMode}
         isFullscreen={isFullscreen}
