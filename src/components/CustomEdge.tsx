@@ -120,7 +120,7 @@ function CustomEdgeInner(props: EdgeProps) {
         <path d={edgePath} className={styles.flow} data-screenshot-decor style={{ stroke: color }} />
       )}
 
-      {showLabel && def && (
+      {showLabel && def.title && (
         <EdgeLabelRenderer>
           <div
             data-edge-id={id}

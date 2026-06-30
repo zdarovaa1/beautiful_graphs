@@ -11,7 +11,7 @@ export default function App() {
   useEffect(() => {
     let alive = true
     ;(async () => {
-      const layout = await runElkLayout(nodes, edges)
+      const layout = await runElkLayout(nodes, edges, islands)
       if (!alive) return
       const positions: GraphLayoutBundle['positions'] = {}
       for (const [id, p] of layout) {

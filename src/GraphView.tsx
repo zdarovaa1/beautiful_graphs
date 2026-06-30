@@ -9,6 +9,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react'
+import type React from 'react'
 import { ReactFlowProvider, type Edge, type Node, type NodeMouseHandler, type EdgeMouseHandler } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
@@ -91,6 +92,8 @@ interface GraphCanvasHostProps {
   onEdgeClick: EdgeMouseHandler
   onPaneClick: () => void
   onNodeDragStop: (e: unknown, node: Node, draggedNodes: Node[]) => void
+  onNodeDragStart: (e: React.MouseEvent, node: Node, nodes: Node[]) => void
+  onIslandDrag: (e: React.MouseEvent, node: Node, nodes: Node[]) => void
   setNodesExternal: (setter: (payload: Node[] | ((ns: Node[]) => Node[])) => void) => void
   onAlignH: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => void
   onAlignV: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => void
@@ -121,6 +124,8 @@ const GraphCanvasHost = memo(function GraphCanvasHost({
   onEdgeClick,
   onPaneClick,
   onNodeDragStop,
+  onNodeDragStart,
+  onIslandDrag,
   setNodesExternal,
   onAlignH,
   onAlignV,
@@ -136,8 +141,8 @@ const GraphCanvasHost = memo(function GraphCanvasHost({
   )
 
   const islandRfNodes = useMemo<Node[]>(
-    () => computeIslandNodes(nodeDefs, islandDefs, positions, visibleNodeIds, settings, savedPositions),
-    [nodeDefs, islandDefs, positions, visibleNodeIds, settings, savedPositions],
+    () => computeIslandNodes(nodeDefs, islandDefs, positions, visibleNodeIds, settings, savedPositions, editMode),
+    [nodeDefs, islandDefs, positions, visibleNodeIds, settings, savedPositions, editMode],
   )
 
   const graphRfNodes = useMemo<Node[]>(
@@ -186,6 +191,8 @@ const GraphCanvasHost = memo(function GraphCanvasHost({
       onEdgeClick={onEdgeClick}
       onPaneClick={onPaneClick}
       onNodeDragStop={onNodeDragStop}
+      onNodeDragStart={onNodeDragStart}
+      onIslandDrag={onIslandDrag}
       setNodesExternal={setNodesExternal}
       onAlignH={onAlignH}
       onAlignV={onAlignV}
@@ -229,12 +236,19 @@ function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
   const selectEntityRef = useRef<(entity: SelectedEntity) => void>(() => {})
   const settingsRef = useRef<DisplaySettings | null>(null)
   const focusNodeIdRef = useRef<string | null>(null)
+  const positionsRef = useRef<Map<string, LaidOutNode> | null>(null)
+  const savedPositionsRef = useRef<PosMap>({})
+  const nodeDefsRef = useRef<GraphNodeDef[]>([])
+  const islandDragOriginRef = useRef<Map<string, { x: number; y: number }>>(new Map())
   settingsRef.current = settings
   focusNodeIdRef.current = focusNodeId
+  positionsRef.current = positions
+  savedPositionsRef.current = savedPositions
 
   const nodeDefs = graph.nodes
   const edgeDefs = graph.edges
   const islandDefs = graph.islands
+  nodeDefsRef.current = nodeDefs
 
   const defaultSettings = useMemo(() => buildInitialSettings(graph.nodes, graph.edges, graph.islands), [graph])
 
@@ -354,12 +368,54 @@ function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
     [nodeDefs, edgeDefs, islandDefs],
   )
 
+  const onNodeDragStart = useCallback((_e: React.MouseEvent, node: Node) => {
+    if (node.type === 'island') {
+      islandDragOriginRef.current.set(node.id, { x: node.position.x, y: node.position.y })
+    }
+  }, [])
+
+  const onIslandDrag = useCallback((_e: React.MouseEvent, node: Node) => {
+    if (node.type !== 'island') return
+    const origin = islandDragOriginRef.current.get(node.id)
+    if (!origin) return
+    const dx = node.position.x - origin.x
+    const dy = node.position.y - origin.y
+    const islandId = node.id.replace(/^island-/, '')
+    const memberIds = new Set(
+      nodeDefsRef.current.filter((n) => n.islandIds.includes(islandId)).map((n) => n.id),
+    )
+    if (memberIds.size === 0) return
+    flowSetNodesRef.current?.((ns) =>
+      (ns as Node[]).map((rfn) => {
+        if (!memberIds.has(rfn.id)) return rfn
+        const base = savedPositionsRef.current[rfn.id] ??
+          positionsRef.current?.get(rfn.id) ?? { x: 0, y: 0 }
+        return { ...rfn, position: { x: base.x + dx, y: base.y + dy } }
+      }),
+    )
+  }, [])
+
   const onNodeDragStop = useCallback((_: unknown, _node: Node, draggedNodes: Node[]) => {
     setSavedPositions((prev) => {
       const next = { ...prev }
-      draggedNodes.forEach((n) => {
-        if (n.type !== 'island') next[n.id] = { x: n.position.x, y: n.position.y }
-      })
+      for (const n of draggedNodes) {
+        if (n.type === 'island') {
+          const origin = islandDragOriginRef.current.get(n.id)
+          if (!origin) continue
+          const dx = n.position.x - origin.x
+          const dy = n.position.y - origin.y
+          const islandId = n.id.replace(/^island-/, '')
+          for (const nd of nodeDefsRef.current) {
+            if (nd.islandIds.includes(islandId)) {
+              const base = prev[nd.id] ?? positionsRef.current?.get(nd.id) ?? { x: 0, y: 0 }
+              next[nd.id] = { x: base.x + dx, y: base.y + dy }
+            }
+          }
+          islandDragOriginRef.current.delete(n.id)
+        } else {
+          next[n.id] = { x: n.position.x, y: n.position.y }
+        }
+      }
       saveNodePositions(nodePositionsKeyRef.current, next)
       return next
     })
@@ -470,6 +526,8 @@ function GraphInner({ graph }: { graph: GraphLayoutBundle }) {
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
             onNodeDragStop={onNodeDragStop}
+            onNodeDragStart={onNodeDragStart}
+            onIslandDrag={onIslandDrag}
             setNodesExternal={onSetFlowNodes}
             onAlignH={onAlignH}
             onAlignV={onAlignV}

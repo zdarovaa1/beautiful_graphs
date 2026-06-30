@@ -13,7 +13,7 @@ import type {
   SelectedEntity,
   DisplaySettings,
 } from '../types'
-import { FALLBACK_BADGE } from '../theme'
+import { FALLBACK_BADGE, FALLBACK_EDGE, FALLBACK_STRIP } from '../theme'
 import type { GraphTexts } from '../texts/defaultTexts'
 import { useGraphTexts } from '../texts/GraphTextsContext'
 import { getGraphEdges, getGraphIslands, getGraphNodes } from '../utils/graphRegistry'
@@ -55,7 +55,8 @@ const Toggle = memo(function Toggle({
 
 function accentFor(selected: SelectedEntity): string {
   const p = selected.data.additionalParams
-  return selected.kind === 'edge' ? p.color! : p.badgeColor!
+  if (selected.kind === 'edge') return p?.color ?? FALLBACK_EDGE
+  return p?.badgeColor ?? FALLBACK_STRIP
 }
 
 const PANEL_RIGHT_OFFSET = 360

@@ -77,7 +77,8 @@ function normalizeColor(input: string): string {
   return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${parsed.a})`
 }
 
-export function withAlpha(input: string, alpha: number): string {
+export function withAlpha(input: string | undefined | null, alpha: number): string {
+  if (!input) return `rgba(0,0,0,${Math.max(0, Math.min(1, alpha))})`
   const parsed = parseColor(input)
   if (!parsed) return input
   const a = Math.max(0, Math.min(1, alpha))

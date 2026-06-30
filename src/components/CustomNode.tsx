@@ -1,4 +1,5 @@
 import { memo, useContext, useMemo } from 'react'
+import type React from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { CSSProperties } from 'react'
 import { getNodeSize } from '../theme'
@@ -8,22 +9,44 @@ import type { GraphNodeDataRef } from '../utils/graphRegistry'
 import { ZoomTierContext } from '../utils/zoomTier'
 import styles from './CustomNode.module.css'
 
-const HANDLES: { type: 'source' | 'target'; pos: Position; id: string }[] = [
-  { type: 'source', pos: Position.Left, id: 'left-s' },
-  { type: 'target', pos: Position.Left, id: 'left-t' },
-  { type: 'source', pos: Position.Right, id: 'right-s' },
-  { type: 'target', pos: Position.Right, id: 'right-t' },
-  { type: 'source', pos: Position.Top, id: 'top-s' },
-  { type: 'target', pos: Position.Top, id: 'top-t' },
-  { type: 'source', pos: Position.Bottom, id: 'bottom-s' },
-  { type: 'target', pos: Position.Bottom, id: 'bottom-t' },
-]
+type HandleEntry = {
+  type: 'source' | 'target'
+  pos: Position
+  id: string
+  style: React.CSSProperties
+}
+
+function buildHandles(): HandleEntry[] {
+  const sides: Array<{ pos: Position; axis: 'v' | 'h'; key: string }> = [
+    { pos: Position.Left, axis: 'v', key: 'left' },
+    { pos: Position.Right, axis: 'v', key: 'right' },
+    { pos: Position.Top, axis: 'h', key: 'top' },
+    { pos: Position.Bottom, axis: 'h', key: 'bottom' },
+  ]
+  const slots: Array<['1' | '2' | '3', string]> = [
+    ['1', '25%'],
+    ['2', '50%'],
+    ['3', '75%'],
+  ]
+  const result: HandleEntry[] = []
+  for (const { pos, axis, key } of sides) {
+    for (const [slot, offset] of slots) {
+      const style: React.CSSProperties = axis === 'v' ? { top: offset } : { left: offset }
+      for (const type of ['source', 'target'] as const) {
+        result.push({ type, pos, id: `${key}-${type[0]}-${slot}`, style })
+      }
+    }
+  }
+  return result
+}
+
+const HANDLES = buildHandles()
 
 const HandleLayer = memo(function HandleLayer() {
   return (
     <>
       {HANDLES.map((h) => (
-        <Handle key={h.id} type={h.type} position={h.pos} id={h.id} className={styles.handle} />
+        <Handle key={h.id} type={h.type} position={h.pos} id={h.id} className={styles.handle} style={h.style} />
       ))}
     </>
   )

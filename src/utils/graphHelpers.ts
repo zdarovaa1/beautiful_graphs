@@ -174,6 +174,7 @@ export function computeIslandNodes(
   visibleNodeIds: Set<string>,
   settings: DisplaySettings,
   savedPositions: PosMap,
+  editMode = false,
 ): Node[] {
   if (settings.hideAllIslands) return []
 
@@ -208,7 +209,7 @@ export function computeIslandNodes(
       type: 'island',
       position: { x, y },
       data: getIslandNodeData(island.id, width, height),
-      draggable: false,
+      draggable: editMode,
       selectable: true,
       zIndex: Z_ISLAND,
       style: { width, height },
@@ -244,6 +245,49 @@ export function computeGraphNodes(
     })
 }
 
+// ─── Настройка портов подключения ────────────────────────────────────────────
+//
+// SECTOR_BIAS — смещение границы секторов от стандартных 45°.
+//   = 1.0  → граница ровно на 45° (стандарт draw.io / Visio)
+//   < 1.0  → граница сдвигается в сторону горизонтали:
+//              ближе к 0 — почти всегда лево/право
+//   > 1.0  → граница сдвигается в сторону вертикали:
+//              большие значения — почти всегда верх/низ
+//
+// Пример: SECTOR_BIAS = 0.5 → верх/низ только когда узел в 2 раза дальше
+//         по вертикали чем по горизонтали (угол > ~63° от горизонтали)
+//
+const SECTOR_BIAS = 1.0
+
+// VERT_SLOT_THRESH (px) — при каком вертикальном смещении центров
+//   переключаться между портами 1 (верх 25%) / 2 (центр 50%) / 3 (низ 75%)
+//   на левой/правой стороне.
+//   Меньше → порты 1 и 3 используются чаще (при небольшом смещении).
+//   Больше → почти всегда центральный порт 2.
+//
+const VERT_SLOT_THRESH = 60
+
+// HORIZ_SLOT_THRESH (px) — аналогично для горизонтального смещения
+//   на верхней/нижней стороне (влияет на порты лево/центр/право).
+//
+const HORIZ_SLOT_THRESH = 100
+// ─────────────────────────────────────────────────────────────────────────────
+
+function pickSlot(diff: number, thresh: number): '1' | '2' | '3' {
+  if (diff < -thresh) return '1'
+  if (diff > thresh) return '3'
+  return '2'
+}
+
+// Цель принимает связь с противоположной стороны:
+// связь приходит сверху → входит в верхний порт, не в нижний.
+function invertSlot(s: '1' | '2' | '3'): '1' | '2' | '3' {
+  return s === '1' ? '3' : s === '3' ? '1' : '2'
+}
+
+// Пространство вокруг целевого узла делится на 4 сектора диагональными линиями.
+// Сектор, в котором находится источник, определяет сторону подключения.
+// Граница секторов задаётся через SECTOR_BIAS (см. выше).
 export function pickEdgeHandles(
   srcId: string,
   tgtId: string,
@@ -254,14 +298,21 @@ export function pickEdgeHandles(
   const tp = savedPositions[tgtId] ?? positions?.get(tgtId)
   const dx = (tp?.x ?? 0) - (sp?.x ?? 0)
   const dy = (tp?.y ?? 0) - (sp?.y ?? 0)
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0
-      ? { sourceHandle: 'right-s', targetHandle: 'left-t' }
-      : { sourceHandle: 'left-s', targetHandle: 'right-t' }
+
+  if (Math.abs(dy) > Math.abs(dx) * SECTOR_BIAS) {
+    // Верхний/нижний сектор — подключаемся через верх или низ
+    const sSlot = pickSlot(dx, HORIZ_SLOT_THRESH)
+    const tSlot = invertSlot(sSlot)
+    return dy > 0
+      ? { sourceHandle: `bottom-s-${sSlot}`, targetHandle: `top-t-${tSlot}` }
+      : { sourceHandle: `top-s-${sSlot}`, targetHandle: `bottom-t-${tSlot}` }
   }
-  return dy >= 0
-    ? { sourceHandle: 'bottom-s', targetHandle: 'top-t' }
-    : { sourceHandle: 'top-s', targetHandle: 'bottom-t' }
+
+  const sSlot = pickSlot(dy, VERT_SLOT_THRESH)
+  const tSlot = invertSlot(sSlot)
+  return dx > 0
+    ? { sourceHandle: `right-s-${sSlot}`, targetHandle: `left-t-${tSlot}` }
+    : { sourceHandle: `left-s-${sSlot}`, targetHandle: `right-t-${tSlot}` }
 }
 
 export function computeEdges(

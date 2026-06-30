@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import type React from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -71,6 +72,8 @@ interface FlowCanvasProps {
   onEdgeClick: EdgeMouseHandler
   onPaneClick: () => void
   onNodeDragStop: (e: unknown, node: Node, draggedNodes: Node[]) => void
+  onNodeDragStart: (e: React.MouseEvent, node: Node, nodes: Node[]) => void
+  onIslandDrag: (e: React.MouseEvent, node: Node, nodes: Node[]) => void
   setNodesExternal: (setter: (payload: Node[] | ((ns: Node[]) => Node[])) => void) => void
   onAlignH: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => void
   onAlignV: (ids: string[], setNodes: (fn: (ns: Node[]) => Node[]) => void) => void
@@ -89,6 +92,8 @@ export const FlowCanvas = memo(function FlowCanvas({
   onEdgeClick,
   onPaneClick,
   onNodeDragStop,
+  onNodeDragStart,
+  onIslandDrag,
   setNodesExternal,
   onAlignH,
   onAlignV,
@@ -121,6 +126,14 @@ export const FlowCanvas = memo(function FlowCanvas({
     setSelectionLayoutTick((t) => t + 1)
   }, [])
 
+  const handleNodeDrag = useCallback(
+    (e: React.MouseEvent, node: Node, nodes: Node[]) => {
+      onIslandDrag(e, node, nodes)
+      bumpSelectionLayout()
+    },
+    [onIslandDrag, bumpSelectionLayout],
+  )
+
   const handleAlignH = useCallback(() => {
     onAlignH(selectedGraphIds, setNodes)
   }, [onAlignH, selectedGraphIds, setNodes])
@@ -147,7 +160,8 @@ export const FlowCanvas = memo(function FlowCanvas({
         onPaneClick={onPaneClick}
         onNodesChange={onNodesChange}
         onNodeDragStop={onNodeDragStop}
-        onNodeDrag={bumpSelectionLayout}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={handleNodeDrag}
         onMove={bumpSelectionLayout}
         nodesDraggable={isEditMode}
         selectionMode={SelectionMode.Partial}
