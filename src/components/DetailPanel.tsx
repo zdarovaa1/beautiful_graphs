@@ -18,6 +18,7 @@ import type { GraphTexts } from '../texts/defaultTexts'
 import { useGraphTexts } from '../texts/GraphTextsContext'
 import { getGraphEdges, getGraphIslands, getGraphNodes } from '../utils/graphRegistry'
 import { PANEL_STORAGE_KEYS } from '../utils/graphStorage'
+import { withAlpha } from '../utils/normalizeGraphColors'
 import { FloatingPanel, FloatingPanelActionsContext, type SnapEdge, type PanelSize } from './FloatingPanel'
 import { getInnerHeight, getInnerWidth } from '../utils/getRootSizes'
 import { Tooltip } from 'antd'
@@ -57,10 +58,6 @@ function accentFor(selected: SelectedEntity): string {
   return selected.kind === 'edge' ? p.color! : p.badgeColor!
 }
 
-function accentBgFor(selected: SelectedEntity): string {
-  return selected.data.additionalParams.accentBg!
-}
-
 const PANEL_RIGHT_OFFSET = 360
 const PANEL_DEFAULT_Y = 90
 const PANEL_DEFAULT_WIDTH = 320
@@ -77,14 +74,12 @@ const ContextCard = memo(function ContextCard({
   title,
   meta,
   metaColor,
-  metaBg,
   lines,
   onClick,
 }: {
   title: string
   meta?: string
   metaColor?: string
-  metaBg?: string
   lines?: string[]
   onClick: () => void
 }) {
@@ -94,7 +89,7 @@ const ContextCard = memo(function ContextCard({
       <div className={styles.contextHead}>
         <div className={styles.contextName}>{title}</div>
         {meta && (
-          <div className={styles.contextMeta} style={{ color: badgeColor, background: metaBg ?? badgeColor }}>
+          <div className={styles.contextMeta} style={{ color: badgeColor, background: withAlpha(badgeColor, 0.12) }}>
             {meta}
           </div>
         )}
@@ -209,7 +204,6 @@ const DetailPanelBody = memo(function DetailPanelBody({
   useEffect(() => setLinksOpen(false), [selected?.data.id])
 
   const accent = useMemo(() => (selected ? accentFor(selected) : ''), [selected])
-  const accentBg = useMemo(() => (selected ? accentBgFor(selected) : ''), [selected])
 
   const links = useMemo(
     () => (selected?.data.additionalParams.links as { label: string; url: string }[] | undefined) ?? [],
@@ -312,7 +306,7 @@ const DetailPanelBody = memo(function DetailPanelBody({
         <IconGripVertical size={15} className={styles.grip} />
         <div className={styles.titleRow}>
           <h2 className={styles.title}>{d.title}</h2>
-          <span className={styles.badge} style={{ color: accent, background: accentBg }}>
+          <span className={styles.badge} style={{ color: accent, background: withAlpha(accent, 0.12) }}>
             {d.type}
           </span>
           <div className={styles.titleActions}>
@@ -352,7 +346,6 @@ const DetailPanelBody = memo(function DetailPanelBody({
                         title={is.title}
                         meta={is.type}
                         metaColor={is.additionalParams.badgeColor}
-                        metaBg={is.additionalParams.accentBg}
                         lines={is.shortDescription ? [is.shortDescription] : undefined}
                         onClick={() => selectIsland(is.id)}
                       />
@@ -371,7 +364,6 @@ const DetailPanelBody = memo(function DetailPanelBody({
                     title={other?.title ?? texts.detailPanel.unknownNode}
                     meta={edge.type}
                     metaColor={edge.additionalParams.color}
-                    metaBg={edge.additionalParams.accentBg}
                     lines={neighborLines(edge, other, selected.data.id, texts.detailPanel)}
                     onClick={() => other && selectNode(other.id)}
                   />
@@ -394,7 +386,6 @@ const DetailPanelBody = memo(function DetailPanelBody({
                     title={n.title}
                     meta={n.type}
                     metaColor={n.additionalParams.badgeColor}
-                    metaBg={n.additionalParams.accentBg}
                     lines={n.shortDescription ? [n.shortDescription] : undefined}
                     onClick={() => selectNode(n.id)}
                   />
@@ -415,7 +406,6 @@ const DetailPanelBody = memo(function DetailPanelBody({
                   title={edgeEndpoints.source.title}
                   meta={edgeEndpoints.source.type}
                   metaColor={edgeEndpoints.source.additionalParams.badgeColor}
-                  metaBg={edgeEndpoints.source.additionalParams.accentBg}
                   lines={[
                     `${texts.detailPanel.source}`,
                     ...(edgeEndpoints.source.shortDescription ? [edgeEndpoints.source.shortDescription] : []),
@@ -428,7 +418,6 @@ const DetailPanelBody = memo(function DetailPanelBody({
                   title={edgeEndpoints.target.title}
                   meta={edgeEndpoints.target.type}
                   metaColor={edgeEndpoints.target.additionalParams.badgeColor}
-                  metaBg={edgeEndpoints.target.additionalParams.accentBg}
                   lines={[
                     `${texts.detailPanel.target}`,
                     ...(edgeEndpoints.target.shortDescription ? [edgeEndpoints.target.shortDescription] : []),

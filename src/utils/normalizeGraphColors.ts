@@ -8,7 +8,7 @@ interface Rgba {
   a: number
 }
 
-const COLOR_FIELDS = ['color', 'badgeColor', 'background', 'borderColor', 'titleColor', 'badgeBg', 'selectedBackground'] as const
+const COLOR_FIELDS = ['color', 'badgeColor', 'background', 'borderColor', 'titleColor', 'badgeBg'] as const
 
 function clampByte(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)))
@@ -77,7 +77,7 @@ function normalizeColor(input: string): string {
   return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${parsed.a})`
 }
 
-function withAlpha(input: string, alpha: number): string {
+export function withAlpha(input: string, alpha: number): string {
   const parsed = parseColor(input)
   if (!parsed) return input
   const a = Math.max(0, Math.min(1, alpha))
@@ -97,17 +97,12 @@ function finalizeNodeParams(raw: CommonAdditionalParams): CommonAdditionalParams
   const p = normalizeColorFields(raw)
   const color = p.color ?? FALLBACK_STRIP
   const badgeColor = p.badgeColor ?? color
-  const accent = badgeColor
 
   return {
     ...p,
     color,
     badgeColor,
     badgeBg: p.badgeBg ?? withAlpha(badgeColor, 0.1),
-    selectedBackground: p.selectedBackground ?? withAlpha(color, 0.12),
-    selectBorder: p.borderColor ?? withAlpha(color, 0.55),
-    selectRing: withAlpha(color, 0.3),
-    accentBg: withAlpha(accent, 0.12),
   }
 }
 
@@ -118,7 +113,6 @@ function finalizeEdgeParams(raw: CommonAdditionalParams): CommonAdditionalParams
   return {
     ...p,
     color,
-    accentBg: withAlpha(color, 0.12),
   }
 }
 
@@ -126,7 +120,6 @@ function finalizeIslandParams(raw: CommonAdditionalParams): CommonAdditionalPara
   const p = normalizeColorFields(raw)
   const color = p.color ?? FALLBACK_ISLAND
   const badgeColor = p.badgeColor ?? color
-  const accent = badgeColor
 
   return {
     ...p,
@@ -135,7 +128,6 @@ function finalizeIslandParams(raw: CommonAdditionalParams): CommonAdditionalPara
     background: p.background ?? withAlpha(color, 0.08),
     borderColor: p.borderColor ?? withAlpha(color, 0.4),
     badgeBg: p.badgeBg ?? withAlpha(badgeColor, 0.12),
-    accentBg: withAlpha(accent, 0.12),
   }
 }
 

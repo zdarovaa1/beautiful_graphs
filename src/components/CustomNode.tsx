@@ -2,6 +2,7 @@ import { memo, useContext, useMemo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { CSSProperties } from 'react'
 import { getNodeSize } from '../theme'
+import { withAlpha } from '../utils/normalizeGraphColors'
 import { nodeDefById } from '../utils/graphRegistry'
 import type { GraphNodeDataRef } from '../utils/graphRegistry'
 import { ZoomTierContext } from '../utils/zoomTier'
@@ -37,20 +38,21 @@ function CustomNodeInner({ data, selected }: NodeProps) {
     if (!def) return null
     const p = def.additionalParams
     const { width, height } = getNodeSize(p)
+    const color = p.color!
     const style = {
       width,
       height,
-      '--node-strip': p.color,
+      '--node-strip': color,
       '--badge-color': p.badgeColor,
       '--badge-bg': p.badgeBg,
       '--node-bg': p.background ?? '#fff',
       '--node-border': p.borderColor,
       '--title-color': p.titleColor,
-      '--node-select-border': p.selectBorder,
-      '--node-select-bg': p.selectedBackground,
-      '--node-select-ring': p.selectRing,
+      '--node-select-border': p.borderColor ?? withAlpha(color, 0.55),
+      '--node-select-bg': withAlpha(color, 0.12),
+      '--node-select-ring': withAlpha(color, 0.3),
     } as CSSProperties
-    return { width, height, strip: p.color, style }
+    return { width, height, strip: color, style }
   }, [def])
 
   if (!def || !layout) return null
