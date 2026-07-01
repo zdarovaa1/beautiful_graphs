@@ -54,6 +54,8 @@ export interface CommonAdditionalParams {
   badgeBg?: string
   /** Толщина линии связи в px (CustomEdge). По умолчанию — theme.DEFAULT_EDGE_WIDTH. */
   strokeWidth?: number
+  /** Размер наконечника стрелки в px (CustomEdge). Не зависит от strokeWidth. По умолчанию — theme.DEFAULT_ARROW_SIZE. */
+  arrowSize?: number
   /** Изгиб bezier-связи 0…1 (CustomEdge, edgePath). По умолчанию — theme.DEFAULT_EDGE_CURVATURE. */
   curvature?: number
   /** Анимация "потока" по связи (CustomEdge). По умолчанию true. */

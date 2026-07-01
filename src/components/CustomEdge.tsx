@@ -1,6 +1,7 @@
 import { memo, useContext, useMemo } from 'react'
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from '@xyflow/react'
 import {
+  DEFAULT_ARROW_SIZE,
   DEFAULT_EDGE_CURVATURE,
   DEFAULT_EDGE_WIDTH,
   DEFAULT_EDGE_WIDTH_SELECTED,
@@ -30,6 +31,7 @@ function CustomEdgeInner(props: EdgeProps) {
     return {
       color,
       strokeW: selected ? DEFAULT_EDGE_WIDTH_SELECTED : (params?.strokeWidth ?? DEFAULT_EDGE_WIDTH),
+      arrowSz: params?.arrowSize ?? DEFAULT_ARROW_SIZE,
       curvature: params?.curvature ?? DEFAULT_EDGE_CURVATURE,
       useGradient: params?.edgeGradient === true,
       markerId: `arrow-${edgeColorKey(color)}`,
@@ -37,7 +39,7 @@ function CustomEdgeInner(props: EdgeProps) {
     }
   }, [def, selected])
 
-  const { color, strokeW, curvature, useGradient, markerId, useAnimation } = appearance
+  const { color, strokeW, arrowSz, curvature, useGradient, markerId, useAnimation } = appearance
 
   const useRichStyle = zoomTier >= 2
   const showLabel = useRichStyle && showLabelSetting && !!def
@@ -70,41 +72,26 @@ function CustomEdgeInner(props: EdgeProps) {
 
   return (
     <>
-      {useGradient && (
-        <defs>
+      <defs>
+        {useGradient && (
           <linearGradient id={gid} gradientUnits='userSpaceOnUse' x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
             <stop offset='0%' stopColor={color} />
             <stop offset='100%' stopColor={color} />
           </linearGradient>
-          <marker
-            id={mid}
-            markerWidth='14'
-            markerHeight='14'
-            viewBox='0 0 14 14'
-            refX='10'
-            refY='7'
-            orient='auto-start-reverse'
-          >
-            <path d='M2,2 L12,7 L2,12 Z' fill={color} />
-          </marker>
-        </defs>
-      )}
-
-      {!useGradient && (
-        <defs>
-          <marker
-            id={mid}
-            markerWidth='14'
-            markerHeight='14'
-            viewBox='0 0 14 14'
-            refX='10'
-            refY='7'
-            orient='auto-start-reverse'
-          >
-            <path d='M2,2 L12,7 L2,12 Z' fill={color} />
-          </marker>
-        </defs>
-      )}
+        )}
+        <marker
+          id={mid}
+          markerUnits='userSpaceOnUse'
+          markerWidth={arrowSz}
+          markerHeight={arrowSz}
+          viewBox='0 0 14 14'
+          refX='10'
+          refY='7'
+          orient='auto-start-reverse'
+        >
+          <path d='M2,2 L12,7 L2,12 Z' fill={color} />
+        </marker>
+      </defs>
 
       <BaseEdge
         id={id}

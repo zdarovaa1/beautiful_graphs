@@ -7,6 +7,7 @@ import {
   ReactFlow,
   SelectionMode,
   useNodesState,
+  useEdgesState,
   useStore,
   type Edge,
   type Node,
@@ -107,6 +108,16 @@ export const FlowCanvas = memo(function FlowCanvas({
     setNodes((current) => syncDerivedNodes(current, derivedNodes))
   }, [derivedNodes, setNodes])
 
+  const [edgesState, setEdgesState, onEdgesChange] = useEdgesState(edges)
+
+  useEffect(() => {
+    setEdgesState((current) => {
+      const selectedIds = new Set(current.filter((e) => e.selected).map((e) => e.id))
+      if (selectedIds.size === 0) return edges
+      return edges.map((e) => (selectedIds.has(e.id) ? { ...e, selected: true } : e))
+    })
+  }, [edges, setEdgesState])
+
   const setNodesExternalRef = useRef(setNodesExternal)
   setNodesExternalRef.current = setNodesExternal
   useEffect(() => {
@@ -152,13 +163,14 @@ export const FlowCanvas = memo(function FlowCanvas({
     <ZoomTierContext.Provider value={zoomTier}>
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={edgesState}
         nodeTypes={RF_NODE_TYPES}
         edgeTypes={RF_EDGE_TYPES}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         onNodeDragStop={onNodeDragStop}
         onNodeDragStart={onNodeDragStart}
         onNodeDrag={handleNodeDrag}

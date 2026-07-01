@@ -11,6 +11,7 @@ export const FALLBACK_EDGE = '#7c8db5'
 export const DEFAULT_EDGE_WIDTH = 2
 export const DEFAULT_EDGE_WIDTH_SELECTED = 3.5
 export const DEFAULT_EDGE_CURVATURE = 0.35
+export const DEFAULT_ARROW_SIZE = 10
 
 export function getNodeSize(params: CommonAdditionalParams): { width: number; height: number } {
   return {

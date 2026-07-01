@@ -24,8 +24,9 @@ export const SharedEdgeDefs = memo(function SharedEdgeDefs({ graphId }: { graphI
           <marker
             key={color}
             id={`arrow-${edgeColorKey(color)}`}
-            markerWidth='12'
-            markerHeight='12'
+            markerUnits='userSpaceOnUse'
+            markerWidth='10'
+            markerHeight='10'
             viewBox='0 0 14 14'
             refX='10'
             refY='7'
